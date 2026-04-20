@@ -1,0 +1,66 @@
+# ChinanTool 配置文件
+
+# 服务器配置
+server:
+  http_port: 32995          # HTTP API 端口
+  ws_port: 32996            # WebSocket 端口
+  host: "0.0.0.0"           # 监听地址
+  cors_origins:             # CORS 允许来源
+    - "http://localhost:32995"
+    - "https://localhost:32995"
+    - "http://127.0.0.1:32995"
+
+# TLS 配置
+tls:
+  enabled: false            # 是否启用 TLS
+  cert_file: ""             # SSL 证书文件路径
+  key_file: ""              # SSL 私钥文件路径
+
+# MNDP 配置
+mndp:
+  port: 5678                # MNDP 监听端口
+  device_expire_seconds: 10 # 设备过期时间（秒）
+  discovery_count: 2        # 每个网卡发送发现包次数
+
+# MikroTik API 配置
+api:
+  legacy_port: 8728         # Legacy API 端口
+  legacy_ssl_port: 8729     # Legacy SSL API 端口
+  rest_port: 443            # REST API 端口
+  login_timeout: 5          # 登录超时（秒）
+  read_timeout: 30          # 读取超时（秒）
+  connect_timeout: 10       # 连接超时（秒）
+  max_retries: 2            # 最大重试次数
+
+# FTP 配置
+ftp:
+  port: 60000               # FTP 端口
+  log_paths:                # FTP 日志路径（按优先级尝试）
+    - "/flash/log.0.txt"
+    - "log.0.txt"
+
+# WebSocket 轮询配置
+polling:
+  interface_interval: 2     # 接口列表轮询间隔（秒）
+  wireless_interval: 1      # 无线接口轮询间隔（秒）
+  security_profile_interval: 3 # 加密配置轮询间隔（秒）
+  ip_address_interval: 3    # IP 地址轮询间隔（秒）
+  client_interval: 1        # 终端列表轮询间隔（秒）
+  device_check_interval: 5     # 设备状态检查间隔（秒）
+  max_consecutive_errors: 5 # 最大连续错误次数
+
+# TCP Keepalive 配置
+keepalive:
+  idle: 10                  # 空闲后开始探测（秒）
+  interval: 2               # 探测间隔（秒）
+  count: 3                  # 探测次数
+
+# 日志配置
+logging:
+  level: "INFO"             # 日志级别: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+# 静态文件配置
+static:
+  directory: "static"       # 静态文件目录
+  index_file: "index.html"  # 默认首页文件

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网络设备管理</title>
+    
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <div class="login-container" id="login-container">
+        <div class="login-panel">
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="device-ip">设备IP</label>
+                    <input type="text" id="device-ip" placeholder="请输入设备IP">
+                </div>
+                <div class="form-group">
+                    <label for="username">账号</label>
+                    <input type="text" id="username" placeholder="请输入账号">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" placeholder="请输入密码">
+                </div>
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="remember-password">
+                    <label for="remember-password">记住密码</label>
+                </div>
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="show-password" onchange="togglePasswordVisibility()">
+                    <label for="show-password">显示密码</label>
+                </div>
+                <button class="btn btn-refresh" id="refresh-btn">刷新</button>
+                <button class="btn btn-login" id="login-btn">登录</button>
+            </div>
+            <div class="effect-area" id="effect-area"></div>
+        </div>
+        
+        <div class="device-panel">
+            <div class="device-discovery">
+                <div class="device-header">
+                    <h2>设备发现</h2>
+                    <span class="device-count" id="device-count">0 台设备</span>
+                </div>
+                <div class="device-search">
+                    <input type="text" id="device-search" placeholder="搜索设备 (IP/名称/MAC)...">
+                </div>
+                <div class="device-list" id="device-list">
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                        </svg>
+                        <p>点击刷新按钮开始发现设备</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="config-container" id="config-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2 id="sidebar-device-name" onclick="openDeviceNameModal()" title="点击修改设备名称">网络设备</h2>
+                <div class="device-info" id="sidebar-device-ip">192.168.1.1</div>
+            </div>
+            <div class="sidebar-menu">
+                <div class="menu-item active" data-menu="device-info">
+                    <svg viewBox="0 0 24 24"><path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93 0 3.21-1.92 6-4.72 7.28L13 17v5h5l-1.22-1.22C19.91 19.07 22 15.76 22 12c0-5.18-3.95-9.45-9-9.95zM11 2.05C5.94 2.55 2 6.81 2 12c0 3.76 2.09 7.07 5.22 8.78L6 22h5v-5l-2.28 2.28C6.92 18 5 15.21 5 12c0-4.08 3.05-7.44 7-7.93V2.05z"/></svg>
+                    <span>设备信息</span>
+                </div>
+                <div class="menu-item" data-menu="interfaces">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                    <span>接口列表</span>
+                </div>
+                <div class="menu-item" data-menu="bridge">
+                    <svg viewBox="0 0 24 24"><path d="M7 14v-4h3v4H7zm7 0v-4h3v4h-3zm7 2H3v-2h18v2zm-1-4h-2V6h-3v6h-4V6h-3v6H4v8h2v-4h3v4h2v-4h4v4h2v-4h3v4h2v-8z"/></svg>
+                    <span>桥</span>
+                </div>
+                <div class="menu-item" data-menu="wireless">
+                    <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                    <span>无线</span>
+                    <svg class="submenu-arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                </div>
+                <div class="submenu">
+                    <div class="submenu-item" data-menu="wireless-interfaces">无线接口</div>
+                    <div class="submenu-item" data-menu="wireless-clients">终端列表</div>
+                    <div class="submenu-item" data-menu="wireless-security">加密配置</div>
+                </div>
+                <div class="menu-item" data-menu="network">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                    <span>网络</span>
+                </div>
+                <div class="menu-item" data-menu="firewall">
+                    <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>防火墙</span>
+                </div>
+                <div class="menu-item" data-menu="routing">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                    <span>路由</span>
+                </div>
+                <div class="menu-item" data-menu="logs">
+                    <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10H7v-2h10v2zm0-4H7V7h10v2zm-4 8H7v-2h6v2z"/></svg>
+                    <span>日志</span>
+                </div>
+                <div class="menu-item" data-menu="system">
+                    <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                    <span>系统</span>
+                    <svg class="submenu-arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                </div>
+                <div class="submenu">
+                    <div class="submenu-item" data-menu="device-name">设备名称</div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="logout-btn" onclick="handleLogout()">退出登录</button>
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="content-header">
+                <h1 id="content-title">接口列表</h1>
+                <div id="content-actions"></div>
+            </div>
+            <div class="content-body" id="content-body">
+                <div class="loading-spinner">
+                    <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
+
+    <div class="reconnect-modal" id="reconnect-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon">🔄</div>
+            <div class="reconnect-title">设备连接断开</div>
+            <div class="reconnect-message">正在尝试重连...</div>
+            <div class="reconnect-timer" id="reconnect-timer">剩余时间：60 秒</div>
+            <div class="reconnect-progress">
+                <div class="reconnect-progress-bar" id="reconnect-progress-bar"></div>
+            </div>
+            <button class="reconnect-cancel-btn" id="reconnect-cancel-btn">取消重连</button>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="interface-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon" id="interface-modal-icon">⚙️</div>
+            <div class="reconnect-title" id="interface-modal-title">接口操作</div>
+            <div class="reconnect-message" id="interface-modal-message">确定要执行此操作吗？</div>
+            <div class="interface-modal-buttons">
+                <button class="reconnect-cancel-btn" id="interface-modal-cancel">取消</button>
+                <button class="interface-confirm-btn" id="interface-modal-confirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="login-error-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon" id="login-error-icon" style="animation: none;">❌</div>
+            <div class="reconnect-title" id="login-error-title">登录失败</div>
+            <div class="reconnect-message" id="login-error-message">登录失败，请检查输入信息</div>
+            <div class="interface-modal-buttons">
+                <button class="interface-confirm-btn" id="login-error-confirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="config-error-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon" style="animation: none;">⚠️</div>
+            <div class="reconnect-title">配置不匹配</div>
+            <div class="reconnect-message" id="config-error-message">配置不匹配</div>
+            <div class="interface-modal-buttons">
+                <button class="interface-confirm-btn" id="config-error-confirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="device-name-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon">🏷️</div>
+            <div class="reconnect-title">修改设备名称</div>
+            <div class="device-name-form">
+                <label>设备名称</label>
+                <input type="text" id="device-name-input" placeholder="请输入新的设备名称" maxlength="32">
+                <div class="interface-modal-buttons">
+                    <button class="reconnect-cancel-btn" onclick="closeDeviceNameModal()">取消</button>
+                    <button class="interface-confirm-btn" onclick="saveDeviceName()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="interface-detail-modal">
+        <div class="interface-detail-content">
+            <div class="interface-detail-header">
+                <div class="interface-detail-title">
+                    <span id="detail-icon">📡</span>
+                    <span id="detail-name">接口名称</span>
+                </div>
+                <button class="detail-close-btn" onclick="hideInterfaceDetail()">✕</button>
+            </div>
+            <div class="interface-detail-body">
+                <div class="detail-section">
+                    <div class="detail-section-title">基本信息</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">状态</span>
+                            <span class="detail-value" id="detail-status">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">类型</span>
+                            <span class="detail-value" id="detail-type">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">MAC地址</span>
+                            <span class="detail-value" id="detail-mac">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">MTU</span>
+                            <span class="detail-value" id="detail-mtu">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-section-title">流量统计</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">发送速率</span>
+                            <span class="detail-value detail-tx" id="detail-tx">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">接收速率</span>
+                            <span class="detail-value detail-rx" id="detail-rx">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">发送总量</span>
+                            <span class="detail-value" id="detail-tx-total">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">接收总量</span>
+                            <span class="detail-value" id="detail-rx-total">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-section-title">接口状态</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">上次断开时间</span>
+                            <span class="detail-value" id="detail-link-down-time">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">上次连接时间</span>
+                            <span class="detail-value" id="detail-link-up-time">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">断开次数</span>
+                            <span class="detail-value" id="detail-link-downs">--</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">从属状态</span>
+                            <span class="detail-value" id="detail-slave">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="wireless-config-modal">
+        <div class="wireless-config-content">
+            <div class="wireless-config-header">
+                <div class="wireless-config-title">
+                    <span>📡</span>
+                    <span id="wireless-config-name">无线接口配置</span>
+                </div>
+                <button class="detail-close-btn" onclick="closeWirelessConfigModal()">✕</button>
+            </div>
+            <div class="wireless-config-body">
+                <div id="wireless-config-loading" class="wireless-config-loading">
+                    <div class="loading-spinner"></div>
+                    <span>配置正在加载中...</span>
+                </div>
+                <div id="wireless-config-form" class="wireless-config-form" style="display: none;">
+                    <div class="config-row">
+                        <label>模式</label>
+                        <select id="wc-mode">
+                            <option value="ap-bridge">AP</option>
+                            <option value="station">标准三层客户端</option>
+                            <option value="station-bridge">客户端桥接</option>
+                            <option value="station-wds">客户端桥接（WDS）</option>
+                            <option value="station-pseudobridge">客户端对接</option>
+                            <option value="station-pseudobridge-clone">客户端对接克隆</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>频段</label>
+                        <select id="wc-band">
+                            <option value="2ghz-b">2GHz-B</option>
+                            <option value="2ghz-b/g">2GHz-B/G</option>
+                            <option value="2ghz-b/g/n">2GHz-B/G/N</option>
+                            <option value="2ghz-onlyg">2GHz-OnlyG</option>
+                            <option value="2ghz-onlyn">2GHz-OnlyN</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>频宽</label>
+                        <select id="wc-channel-width">
+                            <option value="5mhz">5MHz</option>
+                            <option value="10mhz">10MHz</option>
+                            <option value="20mhz">20MHz</option>
+                            <option value="20/40mhz">20/40MHz</option>
+                            <option value="40mhz">40MHz</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>频率</label>
+                        <select id="wc-frequency">
+                            <option value="">自动</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>SSID</label>
+                        <input type="text" id="wc-ssid">
+                    </div>
+                    <div class="config-row">
+                        <label>Radio名称</label>
+                        <input type="text" id="wc-radio-name">
+                    </div>
+                    <div class="config-row">
+                        <label>频率绑定</label>
+                        <span class="checkbox-container">
+                            <input type="checkbox" id="wc-scan-list-default" checked onchange="toggleScanListInput()">
+                        </span>
+                        <input type="text" id="wc-scan-list" disabled style="flex: 1;">
+                    </div>
+                    <div class="config-row">
+                        <label>无线协议</label>
+                        <select id="wc-wireless-protocol">
+                            <option value="any">任意</option>
+                            <option value="nstreme">Nstreme</option>
+                            <option value="nv2">NV2</option>
+                            <option value="nv2-nstreme">NV2/Nstreme</option>
+                            <option value="802.11">802.11</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>无线加密配置</label>
+                        <select id="wc-security-profile">
+                            <option value="default">默认</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>超级信道</label>
+                        <select id="wc-frequency-mode">
+                            <option value="superchannel">超级频道</option>
+                            <option value="country">国家</option>
+                            <option value="regulatory-domain">监管域</option>
+                            <option value="manual-txpower">手动发射功率</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label>国家码</label>
+                        <select id="wc-country">
+                            <option value="no_country_set">未设置</option>
+                            <option value="albania">阿尔巴尼亚</option>
+                            <option value="algeria">阿尔及利亚</option>
+                            <option value="argentina">阿根廷</option>
+                            <option value="armenia">亚美尼亚</option>
+                            <option value="australia">澳大利亚</option>
+                            <option value="austria">奥地利</option>
+                            <option value="azerbaijan">阿塞拜疆</option>
+                            <option value="bahamas">巴哈马</option>
+                            <option value="bahrain">巴林</option>
+                            <option value="bangladesh">孟加拉国</option>
+                            <option value="barbados">巴巴多斯</option>
+                            <option value="belarus">白俄罗斯</option>
+                            <option value="belgium">比利时</option>
+                            <option value="belize">伯利兹</option>
+                            <option value="bermuda">百慕大</option>
+                            <option value="bolivia">玻利维亚</option>
+                            <option value="bosnia and herzegovina">波黑</option>
+                            <option value="brazil">巴西</option>
+                            <option value="brunei darussalam">文莱</option>
+                            <option value="bulgaria">保加利亚</option>
+                            <option value="cambodia">柬埔寨</option>
+                            <option value="canada">加拿大</option>
+                            <option value="chile">智利</option>
+                            <option value="china">中国</option>
+                            <option value="taiwan">台湾</option>
+                            <option value="colombia">哥伦比亚</option>
+                            <option value="costa rica">哥斯达黎加</option>
+                            <option value="croatia">克罗地亚</option>
+                            <option value="cyprus">塞浦路斯</option>
+                            <option value="czech republic">捷克</option>
+                            <option value="denmark">丹麦</option>
+                            <option value="dominican republic">多米尼加</option>
+                            <option value="ecuador">厄瓜多尔</option>
+                            <option value="egypt">埃及</option>
+                            <option value="el salvador">萨尔瓦多</option>
+                            <option value="estonia">爱沙尼亚</option>
+                            <option value="finland">芬兰</option>
+                            <option value="france">法国</option>
+                            <option value="french guiana">法属圭亚那</option>
+                            <option value="france res">法国保留</option>
+                            <option value="french polynesia">法属波利尼西亚</option>
+                            <option value="georgia">格鲁吉亚</option>
+                            <option value="germany">德国</option>
+                            <option value="greece">希腊</option>
+                            <option value="greenland">格陵兰</option>
+                            <option value="grenada">格林纳达</option>
+                            <option value="guadeloupe">瓜德罗普</option>
+                            <option value="guam">关岛</option>
+                            <option value="guatemala">危地马拉</option>
+                            <option value="haiti">海地</option>
+                            <option value="honduras">洪都拉斯</option>
+                            <option value="hong kong">香港</option>
+                            <option value="hungary">匈牙利</option>
+                            <option value="iceland">冰岛</option>
+                            <option value="india">印度</option>
+                            <option value="indonesia">印度尼西亚</option>
+                            <option value="iran">伊朗</option>
+                            <option value="ireland">爱尔兰</option>
+                            <option value="israel">以色列</option>
+                            <option value="italy">意大利</option>
+                            <option value="japan">日本</option>
+                            <option value="jordan">约旦</option>
+                            <option value="kazakhstan">哈萨克斯坦</option>
+                            <option value="kenya">肯尼亚</option>
+                            <option value="north korea">朝鲜</option>
+                            <option value="korea republic">韩国</option>
+                            <option value="kuwait">科威特</option>
+                            <option value="latvia">拉脱维亚</option>
+                            <option value="lebanon">黎巴嫩</option>
+                            <option value="liechtenstein">列支敦士登</option>
+                            <option value="lithuania">立陶宛</option>
+                            <option value="luxembourg">卢森堡</option>
+                            <option value="macau">澳门</option>
+                            <option value="malawi">马拉维</option>
+                            <option value="malaysia">马来西亚</option>
+                            <option value="malta">马耳他</option>
+                            <option value="martinique">马提尼克</option>
+                            <option value="mayotte">马约特</option>
+                            <option value="mexico">墨西哥</option>
+                            <option value="monaco">摩纳哥</option>
+                            <option value="montenegro">黑山</option>
+                            <option value="morocco">摩洛哥</option>
+                            <option value="nepal">尼泊尔</option>
+                            <option value="netherlands">荷兰</option>
+                            <option value="netherlands antilles">荷属安的列斯</option>
+                            <option value="aruba">阿鲁巴</option>
+                            <option value="new zealand">新西兰</option>
+                            <option value="nicaragua">尼加拉瓜</option>
+                            <option value="north macedonia">北马其顿</option>
+                            <option value="norway">挪威</option>
+                            <option value="oman">阿曼</option>
+                            <option value="pakistan">巴基斯坦</option>
+                            <option value="panama">巴拿马</option>
+                            <option value="papua new guinea">巴布亚新几内亚</option>
+                            <option value="paraguay">巴拉圭</option>
+                            <option value="peru">秘鲁</option>
+                            <option value="philippines">菲律宾</option>
+                            <option value="poland">波兰</option>
+                            <option value="portugal">葡萄牙</option>
+                            <option value="puerto rico">波多黎各</option>
+                            <option value="qatar">卡塔尔</option>
+                            <option value="reunion">留尼汪</option>
+                            <option value="romania">罗马尼亚</option>
+                            <option value="russia">俄罗斯</option>
+                            <option value="rwanda">卢旺达</option>
+                            <option value="saudi arabia">沙特阿拉伯</option>
+                            <option value="serbia">塞尔维亚</option>
+                            <option value="singapore">新加坡</option>
+                            <option value="slovakia">斯洛伐克</option>
+                            <option value="slovenia">斯洛文尼亚</option>
+                            <option value="south africa">南非</option>
+                            <option value="spain">西班牙</option>
+                            <option value="sri lanka">斯里兰卡</option>
+                            <option value="sweden">瑞典</option>
+                            <option value="switzerland">瑞士</option>
+                            <option value="syria">叙利亚</option>
+                            <option value="tanzania">坦桑尼亚</option>
+                            <option value="thailand">泰国</option>
+                            <option value="trinidad and tobago">特立尼达和多巴哥</option>
+                            <option value="tunisia">突尼斯</option>
+                            <option value="turkey">土耳其</option>
+                            <option value="uganda">乌干达</option>
+                            <option value="ukraine">乌克兰</option>
+                            <option value="united arab emirates">阿联酋</option>
+                            <option value="united kingdom">英国</option>
+                            <option value="united states">美国</option>
+                            <option value="united states2">美国2</option>
+                            <option value="united states (public safety)">美国(公共安全)</option>
+                            <option value="uruguay">乌拉圭</option>
+                            <option value="uzbekistan">乌兹别克斯坦</option>
+                            <option value="venezuela">委内瑞拉</option>
+                            <option value="viet nam">越南</option>
+                            <option value="yemen">也门</option>
+                            <option value="zimbabwe">津巴布韦</option>
+                            <option value="debug">调试</option>
+                        </select>
+                    </div>
+                    <div class="config-checkbox-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="wc-default-forwarding">
+                            <span class="checkbox-custom"></span>
+                            终端隔离
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="wc-hide-ssid">
+                            <span class="checkbox-custom"></span>
+                            隐藏SSID
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="wc-default-authentication">
+                            <span class="checkbox-custom"></span>
+                            默认认证
+                        </label>
+                    </div>
+                </div>
+                <div class="wireless-config-footer">
+                    <button class="wc-btn wc-btn-cancel" onclick="closeWirelessConfigModal()">取消</button>
+                    <button class="wc-btn wc-btn-confirm" onclick="saveWirelessConfig()">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="security-add-modal">
+        <div class="reconnect-content" style="min-width: 350px;">
+            <div class="reconnect-icon" style="animation: none;">🔐</div>
+            <div class="reconnect-title">添加加密配置</div>
+            <div style="text-align: left; margin-top: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">名称</label>
+                    <input type="text" id="security-name" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">加密方式</label>
+                    <select id="security-auth" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                        <option value="wpa">WPA</option>
+                        <option value="wpa2" selected>WPA2</option>
+                        <option value="wpa/wpa2">WPA/WPA2</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">加密算法</label>
+                    <select id="security-cipher" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                        <option value="aes" selected>AES</option>
+                        <option value="tkip">TKIP</option>
+                        <option value="aes/tkip">AES/TKIP</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">密码（至少8位）</label>
+                    <input type="text" id="security-password" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                </div>
+                <div id="security-error-message" style="color: #e74c3c; font-size: 12px; display: none; margin-bottom: 10px;"></div>
+            </div>
+            <div class="interface-modal-buttons">
+                <button class="reconnect-cancel-btn" onclick="closeSecurityAddPopup()">取消</button>
+                <button class="interface-confirm-btn" onclick="confirmAddSecurityProfile()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="security-delete-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-icon" style="animation: none;">🗑️</div>
+            <div class="reconnect-title">删除加密配置</div>
+            <div class="reconnect-message" id="security-delete-message">确定要删除此加密配置吗？</div>
+            <div class="interface-modal-buttons">
+                <button class="reconnect-cancel-btn" onclick="closeSecurityDeletePopup()">取消</button>
+                <button class="interface-confirm-btn" onclick="confirmDeleteSecurityProfile()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reconnect-modal" id="security-edit-modal">
+        <div class="reconnect-content" style="min-width: 350px;">
+            <div class="reconnect-icon" style="animation: none;">✏️</div>
+            <div class="reconnect-title">修改加密配置</div>
+            <div style="text-align: left; margin-top: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">名称</label>
+                    <input type="text" id="security-edit-name" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">加密方式</label>
+                    <select id="security-edit-auth" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                        <option value="wpa">WPA</option>
+                        <option value="wpa2" selected>WPA2</option>
+                        <option value="wpa/wpa2">WPA/WPA2</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">加密算法</label>
+                    <select id="security-edit-cipher" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                        <option value="aes" selected>AES</option>
+                        <option value="tkip">TKIP</option>
+                        <option value="aes/tkip">AES/TKIP</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; color: #aaa;">密码（至少8位）</label>
+                    <input type="text" id="security-edit-password" style="width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; box-sizing: border-box;">
+                </div>
+                <div id="security-edit-error-message" style="color: #e74c3c; font-size: 12px; display: none; margin-bottom: 10px;"></div>
+            </div>
+            <div class="interface-modal-buttons">
+                <button class="reconnect-cancel-btn" onclick="closeSecurityEditPopup()">取消</button>
+                <button class="interface-confirm-btn" onclick="confirmEditSecurityProfile()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    
+    <script src="static/js/app.js"></script>
+</body>
+</html>

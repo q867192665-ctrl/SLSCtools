@@ -1,0 +1,1430 @@
+* {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .login-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 30px;
+            position: relative;
+            overflow: visible;
+        }
+        
+        .login-form {
+            display: flex;
+            align-items: flex-end;
+            gap: 15px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .form-group label {
+            color: #fff;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .form-group input {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 180px;
+            background: rgba(255,255,255,0.95);
+            transition: box-shadow 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
+        }
+        
+        .form-group.checkbox {
+            flex-direction: row;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .form-group.checkbox input {
+            width: auto;
+            margin-right: 6px;
+        }
+        
+        .form-group.checkbox label {
+            font-size: 13px;
+        }
+        
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-refresh {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-refresh:hover {
+            background: #45a049;
+        }
+        
+        .btn-login {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-login:hover {
+            background: #1976D2;
+        }
+        
+        .btn:active {
+            transform: scale(0.96);
+        }
+        
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        
+        .effect-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .device-panel {
+            flex: 1;
+            padding: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .device-discovery {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            height: 100%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .device-header h2 {
+            color: #333;
+            margin: 0;
+        }
+        
+        .device-count {
+            background: #4CAF50;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .device-search {
+            margin-bottom: 15px;
+        }
+        
+        .device-search input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .device-search input:focus {
+            border-color: #667eea;
+        }
+        
+        .device-list {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fff;
+        }
+        
+        .device-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .device-table thead {
+            position: sticky;
+            top: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 10;
+        }
+
+        .device-table th {
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .device-table th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .device-table th.sortable:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .sort-indicator {
+            margin-left: 5px;
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        .sort-hint {
+            font-size: 10px;
+            color: #ffd700;
+        }
+        
+        .device-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            color: #333;
+        }
+        
+        .device-table tbody tr {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .device-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .device-table tbody tr.selected {
+            background-color: #e8f5e9;
+        }
+        
+        .device-name {
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        .device-ip {
+            font-family: 'Consolas', monospace;
+            color: #e91e63;
+        }
+        
+        .device-mac {
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .device-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #999;
+        }
+        
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+        
+        .config-container {
+            display: none;
+            height: 100vh;
+        }
+        
+        .config-container.active {
+            display: flex;
+        }
+        
+        .login-container {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .login-container.hidden {
+            display: none;
+        }
+        
+        .sidebar {
+            width: 220px;
+            background: #2c3e50;
+            color: #ecf0f1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            background: #1a252f;
+            border-bottom: 1px solid #34495e;
+        }
+        
+        .sidebar-header h2 {
+            font-size: 16px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        
+        .sidebar-header h2:hover {
+            color: #3498db;
+        }
+        
+        .sidebar-header .device-info {
+            font-size: 12px;
+            color: #95a5a6;
+        }
+
+        .sidebar-header .device-status {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            margin-top: 0;
+            color: #95a5a6;
+            white-space: nowrap;
+        }
+
+        .sidebar-header .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #27ae60;
+            margin-right: 10px;
+        }
+
+        .sidebar-header .device-status.offline .status-dot {
+            background-color: #e74c3c;
+        }
+
+        .sidebar-menu {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .menu-item:hover {
+            background: #34495e;
+        }
+        
+        .menu-item.active {
+            background: #34495e;
+            border-left-color: #3498db;
+        }
+        
+        .menu-item svg {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            fill: currentColor;
+        }
+        
+        .menu-item span {
+            font-size: 14px;
+        }
+        
+        .submenu-arrow {
+            width: 18px;
+            height: 18px;
+            margin-left: auto;
+            fill: currentColor;
+            transition: transform 0.2s;
+        }
+        
+        .menu-item.expanded .submenu-arrow {
+            transform: rotate(180deg);
+        }
+        
+        .submenu {
+            max-height: 0;
+            overflow: hidden;
+            background: #1a252f;
+            transition: max-height 0.3s ease;
+        }
+        
+        .submenu.show {
+            max-height: 200px;
+        }
+        
+        .submenu-item {
+            padding: 12px 20px 12px 52px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #bdc3c7;
+            transition: all 0.2s;
+        }
+        
+        .submenu-item:hover {
+            background: #34495e;
+            color: #fff;
+        }
+        
+        .submenu-item.active {
+            background: #34495e;
+            color: #3498db;
+            border-left: 3px solid #3498db;
+        }
+        
+        .sidebar-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #34495e;
+        }
+        
+        .btn-logout {
+            width: 100%;
+            padding: 10px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .btn-logout:hover {
+            background: #c0392b;
+        }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .content-header {
+            padding: 20px 25px;
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .content-header h1 {
+            font-size: 20px;
+            color: #2c3e50;
+        }
+        
+        .content-body {
+            flex: 1;
+            padding: 25px;
+            overflow-y: auto;
+            background: #f5f6fa;
+        }
+        
+        .config-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .config-card-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .config-card-header h3 {
+            font-size: 16px;
+            color: #2c3e50;
+        }
+        
+        .config-card-body {
+            padding: 20px;
+        }
+        
+        .device-info-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .device-info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+        
+        .info-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .info-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .info-icon svg {
+            width: 24px;
+            height: 24px;
+            fill: #fff;
+        }
+        
+        .info-icon.cpu {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .info-icon.version {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .info-icon.voltage {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        
+        .info-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .info-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+        
+        .info-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .cpu-bar {
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .cpu-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .detail-label {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .detail-value {
+            color: #2c3e50;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 1200px) {
+            .device-info-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .device-info-grid {
+                grid-template-columns: 1fr;
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 13px;
+        }
+        
+        .data-table td {
+            font-size: 13px;
+            color: #555;
+        }
+        
+        .data-table th:nth-child(1),
+        .data-table td:nth-child(1) {
+            width: 8%;
+        }
+        
+        .data-table th:nth-child(2),
+        .data-table td:nth-child(2) {
+            width: 15%;
+        }
+        
+        .data-table th:nth-child(3),
+        .data-table td:nth-child(3) {
+            width: 12%;
+        }
+        
+        .data-table th:nth-child(4),
+        .data-table td:nth-child(4) {
+            width: 15%;
+        }
+        
+        .data-table th:nth-child(5),
+        .data-table td:nth-child(5) {
+            width: 12%;
+        }
+        
+        .data-table th:nth-child(6),
+        .data-table td:nth-child(6) {
+            width: 12%;
+        }
+        
+        .data-table th:nth-child(7),
+        .data-table td:nth-child(7) {
+            width: 8%;
+        }
+        
+        .data-table tbody tr.selected {
+            background-color: #e8f5e9;
+        }
+        
+        .data-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .data-table tbody tr.selected:hover {
+            background-color: #c8e6c9;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .status-indicator.running {
+            background: #28a745;
+            box-shadow: 0 0 4px #28a745;
+        }
+        
+        .status-indicator.stopped {
+            background: #dc3545;
+        }
+        
+        .status-indicator.status-static {
+            background: #28a745;
+        }
+        
+        .status-indicator.status-dynamic {
+            background: #17a2b8;
+        }
+        
+        .status-indicator.status-disabled {
+            background: #6c757d;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-disabled {
+            background: #e2e3e5;
+            color: #6c757d;
+        }
+        
+        .interface-disabled {
+            opacity: 0.5;
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+        
+        .loading-spinner svg {
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            fill: #667eea;
+        }
+
+        /* ==================== Modal 弹窗样式 ==================== */
+
+        .reconnect-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .reconnect-modal.active {
+            display: flex;
+        }
+
+        .device-name-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px 0;
+        }
+
+        .device-name-form label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .device-name-form input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .device-name-form input:focus {
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        #config-error-modal {
+            z-index: 10001;
+        }
+
+        .reconnect-content {
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 30px 40px;
+            text-align: center;
+            color: #ecf0f1;
+            min-width: 300px;
+        }
+
+        .reconnect-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .reconnect-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #e74c3c;
+        }
+
+        .reconnect-message {
+            font-size: 14px;
+            color: #95a5a6;
+            margin-bottom: 15px;
+        }
+
+        .reconnect-timer {
+            font-size: 16px;
+            color: #3498db;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        .reconnect-progress {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .reconnect-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            border-radius: 3px;
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        .reconnect-cancel-btn {
+            background: #34495e;
+            color: #ecf0f1;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .reconnect-cancel-btn:hover {
+            background: #4a5f7a;
+        }
+
+        #interface-modal-icon {
+            animation: none;
+        }
+
+        .interface-modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .interface-confirm-btn {
+            background: #e74c3c;
+            color: #ecf0f1;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .interface-confirm-btn:hover {
+            background: #c0392b;
+        }
+
+        .interface-confirm-btn.enable {
+            background: #27ae60;
+        }
+
+        .interface-confirm-btn.enable:hover {
+            background: #1e8449;
+        }
+
+        .btn-add-security {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .btn-add-security:hover {
+            background: #1e8449;
+        }
+
+        .btn-delete-security {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .btn-delete-security:hover:not(:disabled) {
+            background: #e74c3c;
+        }
+
+        .btn-delete-security:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-enable-security {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .btn-enable-security:hover:not(:disabled) {
+            background: #27ae60;
+        }
+
+        .btn-enable-security:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-disable-security {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .btn-disable-security:hover:not(:disabled) {
+            background: #e67e22;
+        }
+
+        .btn-disable-security:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-add-network {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn-add-network:hover {
+            background: #1e8449;
+        }
+
+        .btn-delete-network {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn-delete-network:hover:not(:disabled) {
+            background: #e74c3c;
+        }
+
+        .btn-delete-network:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-enable-network {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn-enable-network:hover:not(:disabled) {
+            background: #27ae60;
+        }
+
+        .btn-enable-network:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-disable-network {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn-disable-network:hover:not(:disabled) {
+            background: #e67e22;
+        }
+
+        .btn-disable-network:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* ==================== 接口选中行样式 ==================== */
+
+        .selected-row {
+            background-color: #e8f5e9 !important;
+        }
+
+        /* ==================== 接口详情弹窗样式 ==================== */
+
+        .interface-detail-content {
+            background: #fff;
+            border-radius: 12px;
+            padding: 0;
+            min-width: 480px;
+            max-width: 580px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .interface-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: none;
+        }
+
+        .interface-detail-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .detail-close-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: #fff;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .detail-close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .interface-detail-body {
+            padding: 16px 20px;
+            max-height: 450px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .detail-section {
+            margin-bottom: 16px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .detail-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .detail-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-item.full-width {
+            grid-column: span 2;
+        }
+
+        .detail-tx {
+            color: #27ae60 !important;
+            background: #e8f5e9 !important;
+            border-color: #c8e6c9 !important;
+        }
+
+        .detail-rx {
+            color: #2196F3 !important;
+            background: #e3f2fd !important;
+            border-color: #bbdefb !important;
+        }
+
+        .interface-sort-hint {
+            font-size: 10px;
+            color: #667eea;
+            margin-left: 4px;
+        }
+
+        /* ==================== 无线配置弹窗样式 ==================== */
+
+        .wireless-config-content {
+            background: #fff;
+            border-radius: 12px;
+            padding: 0;
+            min-width: 500px;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .wireless-config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: none;
+        }
+
+        .wireless-config-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .wireless-config-body {
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .wireless-config-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .wireless-config-loading .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        .wireless-config-form {
+            display: grid;
+            gap: 10px;
+        }
+
+        .wireless-config-form .config-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .wireless-config-form .config-row label {
+            min-width: 90px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .wireless-config-form .config-row select,
+        .wireless-config-form .config-row input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #f9f9f9;
+            color: #333;
+        }
+
+        .wireless-config-form .config-row select:disabled,
+        .wireless-config-form .config-row input:disabled {
+            background: #f0f0f0;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .wireless-config-form .checkbox-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+
+        .wireless-config-form .checkbox-container input[type="checkbox"] {
+            margin: 0;
+            width: 14px;
+            height: 14px;
+        }
+
+        .wireless-config-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 20px;
+            background: #fff;
+            border-top: 1px solid #eee;
+        }
+
+        .wc-btn {
+            padding: 8px 24px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .wc-btn-cancel {
+            background: #f5f5f5;
+            color: #666;
+            border: 1px solid #ddd;
+        }
+
+        .wc-btn-cancel:hover {
+            background: #eee;
+        }
+
+        .wc-btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+
+        .wc-btn-confirm:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .config-checkbox-row {
+            display: flex;
+            gap: 30px;
+            background: #fff;
+            padding: 10px 16px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+            user-select: none;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            display: none;
+        }
+
+        .checkbox-custom {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            background: #f9f9f9;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
+            background: #e8f5e9;
+            border-color: #4caf50;
+        }
+
+        .checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
+            content: '\2713';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #333;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .checkbox-label input[type="checkbox"]:disabled + .checkbox-custom {
+            background: #f0f0f0;
+            border-color: #ddd;
+            cursor: not-allowed;
+        }
+
+        .wireless-row-selected {
+            background-color: #e8f5e9 !important;
+        }
+
+        /* ==================== 日志主题标签样式 ==================== */
+
+        .log-topic-error {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+
+        .log-topic-warning {
+            background: rgba(241, 196, 15, 0.2);
+            color: #f1c40f;
+        }
+
+        .log-topic-info {
+            background: rgba(52, 152, 219, 0.2);
+            color: #3498db;
+        }
+
+        .log-topic-debug {
+            background: rgba(149, 165, 166, 0.2);
+            color: #95a5a6;
+        }
