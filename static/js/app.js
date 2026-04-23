@@ -7,6 +7,7 @@ const API_BASE = window.location.origin;
         let currentSession = null;
         let currentMenu = 'interfaces';
         let deviceNameWs;
+        let advancedModeEnabled = false;
         
         function startAutoRefresh() {
             refreshInterval = setInterval(fetchDevices, 5000);
@@ -98,7 +99,7 @@ const API_BASE = window.location.origin;
                 }
 
                 tableHtml += `
-                    <tr onclick="selectDevice('${ip}', '${identity}', '${mac}')" ondblclick="doubleClickDevice('${ip}', '${identity}', '${mac}')" class="${isSelected ? 'selected' : ''}">
+                    <tr onclick="selectDevice('${ip}', '${identity}', '${mac}')" ondblclick="doubleClickDevice('${ip}', '${identity}', '${mac}')" oncontextmenu="showDeviceContextMenu(event, '${ip}', '${identity}', '${mac}')" class="${isSelected ? 'selected' : ''}">
                         <td><span class="device-status"></span></td>
                         <td class="device-name">${identity}</td>
                         <td class="device-ip">${ip}</td>
@@ -224,6 +225,73 @@ const API_BASE = window.location.origin;
             document.getElementById('login-btn').click();
         }
 
+        let contextMenuDevice = null;
+
+        function showDeviceContextMenu(e, ip, identity, mac) {
+            e.preventDefault();
+            selectDevice(ip, identity, mac);
+            
+            if (!advancedModeEnabled || !e.ctrlKey) {
+                return;
+            }
+            
+            contextMenuDevice = { ip, identity, mac };
+            
+            let contextMenu = document.getElementById('device-context-menu');
+            if (!contextMenu) {
+                contextMenu = document.createElement('div');
+                contextMenu.id = 'device-context-menu';
+                contextMenu.style.cssText = 'position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); z-index: 10000; min-width: 120px;';
+                document.body.appendChild(contextMenu);
+            }
+            
+            contextMenu.innerHTML = `
+                <div id="slsc-menu-item" style="padding: 8px 16px; cursor: pointer; font-size: 14px;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent'">
+                    英文工具
+                </div>
+            `;
+            
+            document.getElementById('slsc-menu-item').onclick = function() {
+                openSLSCtools(mac);
+            };
+            
+            contextMenu.style.left = e.clientX + 'px';
+            contextMenu.style.top = e.clientY + 'px';
+            contextMenu.style.display = 'block';
+        }
+
+        document.addEventListener('click', function(e) {
+            const contextMenu = document.getElementById('device-context-menu');
+            if (contextMenu && !contextMenu.contains(e.target)) {
+                contextMenu.style.display = 'none';
+            }
+        });
+
+        async function openSLSCtools(mac) {
+            const contextMenu = document.getElementById('device-context-menu');
+            if (contextMenu) {
+                contextMenu.style.display = 'none';
+            }
+            
+            console.log('调用 openSLSCtools, mac:', mac);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/slsc-tools`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mac: mac })
+                });
+                const result = await response.json();
+                console.log('响应:', result);
+                if (result.status !== 'success') {
+                    alert('启动失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('启动错误:', error);
+                alert('启动失败');
+            }
+        }
+
         document.getElementById('device-search').addEventListener('input', function() {
             currentSearchKeyword = this.value;
             const keyword = this.value.toLowerCase();
@@ -245,6 +313,77 @@ const API_BASE = window.location.origin;
         document.getElementById('password').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 document.getElementById('login-btn').click();
+            }
+        });
+
+        // 组合键监听：Ctrl+Shift+S
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                showSecretModal();
+            }
+        });
+
+        // 显示高级模式弹窗
+        function showSecretModal() {
+            // 检查是否已存在弹窗
+            let existingModal = document.getElementById('secret-modal');
+            if (existingModal) {
+                existingModal.classList.add('active');
+                return;
+            }
+
+            // 创建弹窗
+            const modal = document.createElement('div');
+            modal.id = 'secret-modal';
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h3>高级模式</h3>
+                        <button class="modal-close" onclick="closeSecretModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px;">
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <button class="btn btn-login" style="width: 100%; padding: 15px; font-size: 16px;" onclick="unlockEnglishTool()">
+                                🔓 解锁英文工具
+                            </button>
+                            <button class="btn btn-refresh" style="width: 100%; padding: 15px; font-size: 16px;" onclick="enableCompatibilityMode()">
+                                🔧 兼容模式
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // 点击背景关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeSecretModal();
+                }
+            });
+        }
+
+        function closeSecretModal() {
+            const modal = document.getElementById('secret-modal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+
+        function unlockEnglishTool() {
+            closeSecretModal();
+            advancedModeEnabled = true;
+        }
+
+        function enableCompatibilityMode() {
+            closeSecretModal();
+        }
+
+        window.addEventListener('beforeunload', function() {
+            if (advancedModeEnabled) {
+                navigator.sendBeacon(`${API_BASE}/api/slsc-tools/close`);
             }
         });
 

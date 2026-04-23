@@ -605,6 +605,77 @@ async def logout_device(request: Request):
         return {"status": "error", "message": f"登出失败: {e}", "ip": ip}
 
 
+class SLSCtoolsRequest(BaseModel):
+    """SLSCtools 启动请求"""
+    mac: str = ""
+
+
+slsc_process = None
+slsc_process_lock = threading.Lock()
+
+
+@app.post("/api/slsc-tools")
+async def open_slsc_tools(request: SLSCtoolsRequest):
+    """启动 WinBox (SLSCtools.exe) 并传递 MAC 地址到 Connect To 栏"""
+    import ctypes
+    
+    mac = request.mac
+    logger.info(f"收到启动请求: mac={mac}")
+    
+    if not mac:
+        return {"status": "error", "message": "请提供 MAC 地址"}
+    
+    try:
+        base_dir = get_base_dir()
+        slsc_path = os.path.join(base_dir, 'SLSCtools.exe')
+        
+        logger.info(f"程序路径: {slsc_path}, 存在: {os.path.exists(slsc_path)}")
+        
+        if not os.path.exists(slsc_path):
+            return {"status": "error", "message": f"程序不存在: {slsc_path}"}
+        
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None, "open", slsc_path, mac, os.path.dirname(slsc_path), 1
+        )
+        
+        if result <= 32:
+            logger.error(f"ShellExecuteW 返回错误码: {result}")
+            return {"status": "error", "message": f"启动失败，错误码: {result}"}
+        
+        logger.info(f"已启动 WinBox，MAC 地址已传递到 Connect To 栏: {mac}")
+        
+        return {"status": "success", "message": "已启动", "mac": mac}
+    except Exception as e:
+        logger.error(f"启动失败: {e}", exc_info=True)
+        return {"status": "error", "message": f"启动失败: {e}"}
+
+
+@app.post("/api/slsc-tools/close")
+async def close_slsc_tools():
+    """关闭 SLSCtools.exe 进程"""
+    global slsc_process
+    
+    try:
+        with slsc_process_lock:
+            if slsc_process is not None:
+                try:
+                    slsc_process.terminate()
+                    slsc_process.wait(timeout=3)
+                    logger.info("已关闭 SLSCtools.exe")
+                except subprocess.TimeoutExpired:
+                    slsc_process.kill()
+                    logger.info("已强制关闭 SLSCtools.exe")
+                except Exception as e:
+                    logger.warning(f"关闭 SLSCtools.exe 时出错: {e}")
+                finally:
+                    slsc_process = None
+        
+        return {"status": "success", "message": "SLSCtools 已关闭"}
+    except Exception as e:
+        logger.error(f"关闭 SLSCtools 失败: {e}")
+        return {"status": "error", "message": f"关闭失败: {e}"}
+
+
 @app.get("/api/interfaces")
 async def get_interfaces(ip: str = Query(...)):
     """获取接口列表（复用 api_pool 连接）"""
