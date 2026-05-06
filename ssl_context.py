@@ -5,6 +5,8 @@ SSL Context 工厂模块
 提供全局复用的 SSL Context 单例
 """
 
+from __future__ import annotations
+
 import ssl
 import logging
 

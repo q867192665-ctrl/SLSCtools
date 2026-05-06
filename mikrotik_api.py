@@ -122,18 +122,18 @@ class MikroTikAPI:
             req.add_header('Authorization', f'Basic {encoded_credentials}')
             
             with urllib.request.urlopen(req, timeout=5, context=context) as response:
-                print(f"REST API 响应状态: {response.status}")
+                print(f"REST 响应状态: {response.status}")
                 if response.status == 200:
                     data = response.read()
-                    print(f"REST API 响应内容长度: {len(data)}")
+                    print(f"REST 响应内容长度: {len(data)}")
                     if len(data) > 0:
                         return True
             return False
         except urllib.error.HTTPError as e:
-            print(f"REST API HTTP错误: {e.code} - {e.reason}")
+            print(f"REST HTTP错误: {e.code} - {e.reason}")
             return False
         except Exception as e:
-            print(f"REST API 登录失败：{e}")
+            print(f"REST 登录失败：{e}")
             return False
     
     def _try_legacy_login(self, use_ssl: bool = False) -> Tuple[bool, str]:
@@ -194,7 +194,7 @@ class MikroTikAPI:
             error_msg = str(e)
             if "登录失败" in error_msg or "用户名或密码错误" in error_msg:
                 return False, "用户名或密码错误"
-            print(f"Legacy API 登录失败 (SSL={use_ssl}): {e}")
+            print(f"Legacy 登录失败 (SSL={use_ssl}): {e}")
             if self.socket:
                 try:
                     self.socket.close()
@@ -355,6 +355,9 @@ class MikroTikAPI:
             self.logged_in = False
             self.socket.settimeout(old_timeout)
             raise
+        except socket.timeout:
+            self.socket.settimeout(old_timeout)
+            raise
         except Exception as e:
             print(f"读取响应失败：{e}")
             self.logged_in = False
@@ -363,6 +366,72 @@ class MikroTikAPI:
 
         self.socket.settimeout(old_timeout)
         return sentence
+
+    def read_single_word(self, timeout: float = 1) -> Optional[str]:
+        """读取单个 word（用于流式数据，如流量监控）
+
+        Args:
+            timeout: 读取超时时间（秒）
+
+        Returns:
+            解码后的 word，超时或连接关闭时返回 None
+        """
+        if not self.socket:
+            return None
+
+        old_timeout = self.socket.gettimeout()
+        self.socket.settimeout(timeout)
+
+        try:
+            # 读取长度
+            length_byte = self.socket.recv(1)
+            if not length_byte:
+                self.socket.settimeout(old_timeout)
+                return None
+            
+            length = length_byte[0]
+            
+            # 根据第一个字节判断实际长度
+            if length < 0x80:
+                pass
+            elif length < 0xC0:
+                next_byte = self.socket.recv(1)
+                length = ((length & 0x3F) << 8) | next_byte[0]
+            elif length < 0xE0:
+                next_bytes = self.socket.recv(2)
+                length = ((length & 0x1F) << 16) | (next_bytes[0] << 8) | next_bytes[1]
+            elif length < 0xF0:
+                next_bytes = self.socket.recv(3)
+                length = ((length & 0x0F) << 24) | (next_bytes[0] << 16) | (next_bytes[1] << 8) | next_bytes[2]
+            else:
+                next_bytes = self.socket.recv(4)
+                length = (next_bytes[0] << 24) | (next_bytes[1] << 16) | (next_bytes[2] << 8) | next_bytes[3]
+            
+            # 读取数据
+            if length == 0:
+                self.socket.settimeout(old_timeout)
+                return ''  # 空 word 表示句子结束
+            
+            data = self.socket.recv(length)
+            for encoding in ['utf-8', 'gbk', 'gb2312', 'latin-1']:
+                try:
+                    result = data.decode(encoding)
+                    self.last_response_time = time.time()
+                    self.socket.settimeout(old_timeout)
+                    return result
+                except:
+                    continue
+            
+            result = data.decode('utf-8', errors='replace')
+            self.last_response_time = time.time()
+            self.socket.settimeout(old_timeout)
+            return result
+        except socket.timeout:
+            self.socket.settimeout(old_timeout)
+            return None
+        except Exception:
+            self.socket.settimeout(old_timeout)
+            return None
     
     def get_system_info(self, force_refresh: bool = False) -> Dict[str, Any]:
         """获取系统信息"""
@@ -438,7 +507,7 @@ class MikroTikAPI:
                 match = re.match(r'(\d+)\.', version_str)
                 if match:
                     self._routeros_major_version = int(match.group(1))
-                print(f"[版本] RouterOS 版本: {version_str}, 主版本: {self._routeros_major_version}")
+                print(f"[版本] 系统版本: {version_str}, 主版本: {self._routeros_major_version}")
         except Exception as e:
             print(f"[版本] 获取版本失败: {e}")
 
@@ -725,7 +794,7 @@ class MikroTikAPI:
                     break
 
             elapsed = time.time() - start_time
-            print(f"get_logs: API 耗时: {elapsed:.2f}秒, {sentence_count} 次读取")
+            print(f"get_logs: 耗时: {elapsed:.2f}秒, {sentence_count} 次读取")
 
             if not all_lines:
                 return []
@@ -1011,7 +1080,7 @@ class MikroTikAPI:
             return None
             
         except Exception as e:
-            print(f"解析API日志行失败：{e}")
+            print(f"解析日志行失败：{e}")
             return None
     
     def download_log_file(self, local_dir: str = '.', device_mac: str = None) -> Tuple[bool, str, str]:
@@ -1467,7 +1536,7 @@ class MikroTikAPI:
                     system_time = self._format_system_time(date, time_val)
                     return {'system_time': system_time, 'date': date, 'time': time_val}
             except Exception as e:
-                print(f"[get_system_time] REST failed: {e}, falling back to Legacy API")
+                print(f"[get_system_time] REST failed: {e}, falling back to Legacy")
 
         if self.socket:
             try:
@@ -1490,7 +1559,7 @@ class MikroTikAPI:
                 if date and time_val:
                     system_time = self._format_system_time(date, time_val)
             except Exception as e:
-                print(f"[get_system_time] Legacy API failed: {e}")
+                print(f"[get_system_time] Legacy failed: {e}")
 
         return {'system_time': system_time, 'date': date, 'time': time_val}
 
@@ -1585,7 +1654,7 @@ class MikroTikAPI:
                     self.logged_in = False
                     return False
             except Exception as e:
-                print(f"[is_alive] REST API 检测失败: {e}")
+                print(f"[is_alive] REST 检测失败: {e}")
                 self.logged_in = False
                 return False
         else:
@@ -1608,17 +1677,17 @@ class MikroTikAPI:
                 return False
             
             try:
-                print(f"[is_alive] 开始API检测...")
+                print(f"[is_alive] 开始检测...")
                 self.socket.settimeout(3)
                 self.write_sentence(['/system/resource/print'])
                 response = self.read_sentence(timeout=3)
                 self.socket.settimeout(30)
                 self.last_response_time = time.time()
-                print(f"[is_alive] API检测成功，连接正常")
+                print(f"[is_alive] 检测成功，连接正常")
                 return True
                 
             except socket.timeout:
-                print(f"[is_alive] API操作超时(3秒)，设备可能已离线")
+                print(f"[is_alive] 操作超时(3秒)，设备可能已离线")
                 try:
                     self.socket.settimeout(30)
                 except:
@@ -1647,7 +1716,7 @@ class MikroTikAPI:
                 return False
                 
             except Exception as e:
-                print(f"[is_alive] Legacy API 检测失败: {e}")
+                print(f"[is_alive] Legacy 检测失败: {e}")
                 import traceback
                 traceback.print_exc()
                 try:

@@ -10,6 +10,7 @@ import sys
 import platform
 import logging
 import yaml
+import codecs
 
 
 def get_base_dir():
@@ -42,12 +43,13 @@ def setup_logging(config: dict):
             log_dir = get_base_dir()
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'chinantool.log')
+        # Python 3.8 兼容：使用 codecs.open() + StreamHandler 代替 encoding 参数
+        log_stream = codecs.open(log_file, mode='a', encoding='utf-8')
+        handler = logging.StreamHandler(log_stream)
+        handler.setFormatter(logging.Formatter(log_format))
         logging.basicConfig(
             level=getattr(logging, log_level),
-            format=log_format,
-            filename=log_file,
-            filemode='a',
-            encoding='utf-8'
+            handlers=[handler]
         )
     else:
         logging.basicConfig(level=getattr(logging, log_level), format=log_format)

@@ -68,7 +68,7 @@ print('[3/5] 启动器打包完成')
 print('[4/5] 整理文件...')
 setup_dir = os.path.join('dist', 'setup_files')
 os.makedirs(setup_dir, exist_ok=True)
-for f in ['dist/chinantool_backend.exe', 'dist/ChinanTool.exe', 'config.yaml', 'logo.ico', 'Logo.jpg']:
+for f in ['dist/chinantool_backend.exe', 'dist/ChinanTool.exe', 'config.yaml', 'logo.ico', 'Logo.jpg', 'SLSCtools.exe', 'unlock.py']:
     src = f
     if os.path.exists(src):
         shutil.copy2(src, setup_dir)

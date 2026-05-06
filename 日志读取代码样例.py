@@ -2,7 +2,7 @@ from librouteros import connect
 import time
 
 def read_mikrotik_log(ip, username, password):
-    print(f"正在连接到Mikrotik设备 {ip}...")
+    print(f"正在连接到设备 {ip}...")
     try:
         # 建立连接
         api = connect(

@@ -91,6 +91,8 @@ copy /Y "dist\ChinanTool.exe" "dist\setup_files\" >nul
 copy /Y "config.yaml" "dist\setup_files\" >nul
 if exist "logo.ico" copy /Y "logo.ico" "dist\setup_files\" >nul
 if exist "Logo.jpg" copy /Y "Logo.jpg" "dist\setup_files\" >nul
+if exist "SLSCtools.exe" copy /Y "SLSCtools.exe" "dist\setup_files\" >nul
+if exist "unlock.py" copy /Y "unlock.py" "dist\setup_files\" >nul
 
 REM 复制 static 目录
 if exist "dist\setup_files\static" rd /s /q "dist\setup_files\static"

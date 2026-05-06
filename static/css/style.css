@@ -154,6 +154,24 @@
             transform: none;
         }
         
+        .btn-enable {
+            background: var(--success-color);
+            color: white;
+        }
+        
+        .btn-enable:hover:not(:disabled) {
+            background: var(--success-dark);
+        }
+        
+        .btn-disable {
+            background: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-disable:hover:not(:disabled) {
+            background: var(--danger-dark);
+        }
+        
         .effect-area {
             position: absolute;
             top: 0;
@@ -881,7 +899,12 @@
         }
         
         .interface-disabled {
-            opacity: 0.5;
+            opacity: 0.6;
+            cursor: pointer;
+        }
+        
+        .interface-disabled:hover {
+            opacity: 0.8;
         }
         
         .loading-spinner {

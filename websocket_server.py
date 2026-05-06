@@ -20,7 +20,14 @@ import yaml
 from typing import Any, TYPE_CHECKING
 import sys
 from mikrotik_api import MikroTikAPI
-from librouteros import connect as librouteros_connect
+# librouteros 是可选依赖，仅在需要读取日志文件时使用
+# 如果未安装，日志文件读取功能将不可用，但不影响 WebSocket 服务器
+try:
+    from librouteros import connect as librouteros_connect
+    HAS_LIBROUTEROS = True
+except ImportError:
+    librouteros_connect = None  # type: ignore[reportAny]
+    HAS_LIBROUTEROS = False
 
 if TYPE_CHECKING:
     from websockets.asyncio.server import ServerConnection as WebSocketConn
@@ -65,7 +72,7 @@ CONFIG: dict[str, Any] = load_config()
 
 POLLING_CONFIG: dict[str, Any] = CONFIG.get('polling', {})
 INTERFACE_INTERVAL: int = int(POLLING_CONFIG.get('interface_interval', 2))
-WIRELESS_INTERVAL: int = int(POLLING_CONFIG.get('wireless_interval', 1))
+WIRELESS_INTERVAL: int = int(POLLING_CONFIG.get('wireless_interval', 2))
 SECURITY_PROFILE_INTERVAL: int = int(POLLING_CONFIG.get('security_profile_interval', 3))
 IP_ADDRESS_INTERVAL: int = int(POLLING_CONFIG.get('ip_address_interval', 3))
 CLIENT_INTERVAL: int = int(POLLING_CONFIG.get('client_interval', 1))
@@ -143,7 +150,7 @@ def close_log_api_connection(ip: str) -> None:
             api = log_api_connections[ip]
             try:
                 api.close()
-                print(f"[日志API] 已关闭 {ip} 的连接")
+                print(f"[日志] 已关闭 {ip} 的连接")
             except:
                 pass
             del log_api_connections[ip]
@@ -398,7 +405,7 @@ def get_api_connection(device_ip: str, username: str, password: str) -> MikroTik
         success, message = mt_api.login()
 
         if success:
-            print(f"API 连接已创建：{device_ip}:8728 - {message}")
+            print(f"连接已创建：{device_ip} - {message}")
 
             with api_conn_lock:
                 if device_ip in device_api_connections:
@@ -406,23 +413,23 @@ def get_api_connection(device_ip: str, username: str, password: str) -> MikroTik
                     if old_api and old_api is not mt_api:
                         try:
                             old_api.close()
-                            print(f"关闭设备 {device_ip} 的旧 API 连接")
+                            print(f"关闭设备 {device_ip} 的旧连接")
                         except:
                             pass
                 device_api_connections[device_ip] = mt_api
 
             return mt_api
         else:
-            print(f"创建 API 连接失败：{device_ip} - {message}")
+            print(f"创建连接失败：{device_ip} - {message}")
             return None
     except Exception as e:
-        print(f"创建 API 连接失败：{device_ip} - {e}")
+        print(f"创建连接失败：{device_ip} - {e}")
         return None
 
 
 def close_api_connection(device_ip: str) -> None:
     """关闭 API 连接"""
-    print(f"API 连接已关闭：{device_ip}")
+    print(f"连接已关闭：{device_ip}")
 
 
 async def register_connection(websocket: WebSocketConn, device_ip: str) -> None:
@@ -470,6 +477,11 @@ async def unregister_connection(websocket: WebSocketConn, device_ip: str, _devic
 
     logger.info(f"WebSocket 连接已注销：{device_ip}, is_last={is_last_connection}")
 
+    # 只有最后一个连接断开时才清理日志缓存
+    if is_last_connection:
+        clear_log_cache(device_ip)
+        logger.info(f"[日志缓存] 设备 {device_ip} 的日志缓存已清理")
+
 
 device_offline_flags: dict[str, bool] = {}
 offline_flags_lock: threading.Lock = threading.Lock()
@@ -502,16 +514,35 @@ async def watch_device_status(mt_api: MikroTikAPI, device_ip: str, _device_mac: 
     - 外部离线通知（device_offline_flags）立即触发
     - 不调用 is_alive() 避免干扰正在进行的 API 操作
     - finally 中不注销 WebSocket 连接，由主循环处理
+    - 增加宽限期和失败阈值，避免频繁切换菜单时误判离线
     """
     CHECK_INTERVAL: int = DEVICE_CHECK_INTERVAL
-    OFFLINE_THRESHOLD = 3  # 连续失败次数阈值
+    OFFLINE_THRESHOLD = 5  # 连续失败次数阈值（从3增加到5，提高容错性）
     consecutive_failures = 0
+    GRACE_PERIOD = 60  # 连接建立后的宽限期（秒），在此期间不执行严格检查（从30增加到60）
+    grace_period_remaining = GRACE_PERIOD
 
     logger.info(f"[watch_device_status] ===== 开始监控设备: {device_ip} =====")
+
+    # 首次启动时等待较长时间，让socket连接完全稳定
+    # 这在Win7等环境下特别重要，避免立即误判
+    await asyncio.sleep(10)
 
     try:
         while True:
             await asyncio.sleep(CHECK_INTERVAL)
+            
+            # 检查是否有子 WebSocket 连接活跃，如果有则延长宽限期
+            with connections_lock:
+                has_sub_connections = device_ip in active_connections and len(active_connections[device_ip]) > 1
+            
+            if has_sub_connections and grace_period_remaining < 30:
+                grace_period_remaining = 30
+                logger.info(f"[watch_device_status] 检测到子连接活跃，延长宽限期至30秒: {device_ip}")
+            
+            # 更新宽限期
+            if grace_period_remaining > 0:
+                grace_period_remaining -= CHECK_INTERVAL
 
             if is_ws_closed(websocket):
                 logger.info(f"[watch_device_status] WebSocket 已关闭，退出监控: {device_ip}")
@@ -523,7 +554,7 @@ async def watch_device_status(mt_api: MikroTikAPI, device_ip: str, _device_mac: 
                     del device_offline_flags[device_ip]
                     logger.info(f"[watch_device_status] 收到外部离线通知: {device_ip}")
                     mt_api.logged_in = False
-                    await send_device_offline(websocket, "外部模块检测到离线")
+                    await send_device_offline(websocket, device_ip, "外部模块检测到离线")
                     break
 
             # 检查 1: mt_api 对象有效性
@@ -531,57 +562,94 @@ async def watch_device_status(mt_api: MikroTikAPI, device_ip: str, _device_mac: 
                 consecutive_failures += 1
                 logger.warning(f"[watch_device_status] API对象无效或未登录 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
                 if consecutive_failures >= OFFLINE_THRESHOLD:
-                    await send_device_offline(websocket, "API连接无效")
+                    await send_device_offline(websocket, device_ip, "API连接无效")
                     break
                 continue
 
             # 检查 2: API Socket 状态（仅检查 TCP 连接是否存在）
-            if hasattr(mt_api, 'socket') and mt_api.socket:
+            # 在宽限期内，跳过此检查以避免误判
+            if grace_period_remaining <= 0:
+                if hasattr(mt_api, 'socket') and mt_api.socket:
+                    try:
+                        mt_api.socket.getpeername()
+                    except (socket.error, OSError):
+                        # Socket可能暂时不可用，但不一定表示设备离线
+                        # 增加容错：先尝试重新建立连接，而不是直接判定离线
+                        logger.warning(f"[watch_device_status] Socket状态异常，尝试重连 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
+                        try:
+                            mt_api.socket.close()
+                        except:
+                            pass
+                        mt_api.socket = None
+                        mt_api.logged_in = False
+                        
+                        # 尝试重新登录
+                        success, msg = mt_api.login()
+                        if success:
+                            logger.info(f"[watch_device_status] Socket重连成功: {device_ip}")
+                            consecutive_failures = 0  # 重置失败计数
+                            continue
+                        else:
+                            consecutive_failures += 1
+                            logger.warning(f"[watch_device_status] Socket重连失败 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {msg}")
+                            if consecutive_failures >= OFFLINE_THRESHOLD:
+                                await send_device_offline(websocket, device_ip, f"Socket重连失败: {msg}")
+                                break
+                            continue
+                else:
+                    # REST API 没有 socket，跳过此检查
+                    if mt_api.api_version != 'rest':
+                        logger.warning(f"[watch_device_status] Socket为None，尝试重连 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
+                        # 尝试重新登录
+                        success, msg = mt_api.login()
+                        if success:
+                            logger.info(f"[watch_device_status] 重连成功: {device_ip}")
+                            consecutive_failures = 0
+                            continue
+                        else:
+                            consecutive_failures += 1
+                            if consecutive_failures >= OFFLINE_THRESHOLD:
+                                await send_device_offline(websocket, device_ip, f"重连失败: {msg}")
+                                break
+                            continue
+            else:
+                logger.debug(f"[watch_device_status] 宽限期内，跳过Socket检查 (剩余{grace_period_remaining}秒): {device_ip}")
+
+            # 检查 3: 轻量级 TCP 端口探测（不发送 API 命令，避免干扰）
+            # 在宽限期内，跳过此检查以避免误判
+            if grace_period_remaining <= 0:
                 try:
-                    mt_api.socket.getpeername()
-                except (socket.error, OSError):
+                    # 根据API版本选择正确的探测端口
+                    if mt_api.api_version == 'rest':
+                        probe_port = 443
+                    elif mt_api.api_version == 'legacy_ssl':
+                        probe_port = 8729
+                    else:
+                        probe_port = mt_api.port if hasattr(mt_api, 'port') else 8728
+                        
+                    loop = asyncio.get_event_loop()
+                    port_reachable = await asyncio.wait_for(
+                        loop.run_in_executor(None, _tcp_probe, mt_api.host, probe_port),
+                        timeout=3
+                    )
+                    if not port_reachable:
+                        consecutive_failures += 1
+                        logger.warning(f"[watch_device_status] TCP端口不可达 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}:{probe_port}")
+                        if consecutive_failures >= OFFLINE_THRESHOLD:
+                            mt_api.logged_in = False
+                            await send_device_offline(websocket, device_ip, "设备端口不可达")
+                            break
+                        continue
+                except asyncio.TimeoutError:
                     consecutive_failures += 1
-                    logger.warning(f"[watch_device_status] Socket已断开 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
+                    logger.warning(f"[watch_device_status] TCP探测超时 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
                     if consecutive_failures >= OFFLINE_THRESHOLD:
                         mt_api.logged_in = False
-                        await send_device_offline(websocket, "Socket连接断开")
+                        await send_device_offline(websocket, device_ip, "设备探测超时")
                         break
                     continue
             else:
-                # REST API 没有 socket，跳过此检查
-                if mt_api.api_version != 'rest':
-                    consecutive_failures += 1
-                    logger.warning(f"[watch_device_status] Socket为None ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
-                    if consecutive_failures >= OFFLINE_THRESHOLD:
-                        mt_api.logged_in = False
-                        await send_device_offline(websocket, "Socket连接不存在")
-                        break
-                    continue
-
-            # 检查 3: 轻量级 TCP 端口探测（不发送 API 命令，避免干扰）
-            try:
-                probe_port = mt_api.port if hasattr(mt_api, 'port') else 8728
-                loop = asyncio.get_event_loop()
-                port_reachable = await asyncio.wait_for(
-                    loop.run_in_executor(None, _tcp_probe, mt_api.host, probe_port),
-                    timeout=3
-                )
-                if not port_reachable:
-                    consecutive_failures += 1
-                    logger.warning(f"[watch_device_status] TCP端口不可达 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}:{probe_port}")
-                    if consecutive_failures >= OFFLINE_THRESHOLD:
-                        mt_api.logged_in = False
-                        await send_device_offline(websocket, "设备端口不可达")
-                        break
-                    continue
-            except asyncio.TimeoutError:
-                consecutive_failures += 1
-                logger.warning(f"[watch_device_status] TCP探测超时 ({consecutive_failures}/{OFFLINE_THRESHOLD}): {device_ip}")
-                if consecutive_failures >= OFFLINE_THRESHOLD:
-                    mt_api.logged_in = False
-                    await send_device_offline(websocket, "设备探测超时")
-                    break
-                continue
+                logger.debug(f"[watch_device_status] 宽限期内，跳过TCP探测 (剩余{grace_period_remaining}秒): {device_ip}")
 
             # 所有检查通过，设备在线
             consecutive_failures = 0
@@ -603,8 +671,12 @@ async def watch_device_status(mt_api: MikroTikAPI, device_ip: str, _device_mac: 
         traceback.print_exc()
 
 
-async def send_device_offline(websocket: WebSocketConn, reason: str) -> None:
+async def send_device_offline(websocket: WebSocketConn, device_ip: str, reason: str) -> None:
     """发送设备离线消息"""
+    # 清理日志缓存
+    clear_log_cache(device_ip)
+    logger.info(f"[设备离线] 已清理设备 {device_ip} 的日志缓存")
+    
     try:
         message = {'status': 'device_offline', 'message': f'设备连接已断开: {reason}'}
         await websocket.send(json.dumps(message))
@@ -684,6 +756,9 @@ async def handle_interface_polling(websocket: WebSocketConn, device_ip: str, use
     traffic_manager = None
     
     try:
+        # 注意：不复用 device_api_connections 中的共享连接，
+        # 因为本函数在 finally 中会关闭 mt_api，会影响主连接的 watch_device_status 任务
+        # 始终创建独立的 API 连接供本 WebSocket 使用
         mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
         success, message = mt_api.login()
         
@@ -695,8 +770,9 @@ async def handle_interface_polling(websocket: WebSocketConn, device_ip: str, use
             }, ensure_ascii=False))
             return
         
-        with interface_api_lock:
-            interface_api_connections[device_ip] = mt_api
+        # 不将独立连接存入 device_api_connections，避免与主连接冲突
+        # with interface_api_lock:
+        #     interface_api_connections[device_ip] = mt_api
         
         await websocket.send(json.dumps({
             'type': 'interface_list',
@@ -761,7 +837,7 @@ async def handle_interface_polling(websocket: WebSocketConn, device_ip: str, use
         if mt_api:
             try:
                 mt_api.close()
-                print(f"接口列表API连接已关闭: {device_ip}")
+                print(f"接口列表连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -907,7 +983,8 @@ async def handle_get_wireless_interfaces_list(websocket: WebSocketConn, device_i
                         'name': iface.get('name'),
                         'frequency': iface.get('frequency', '--'),
                         'band': iface.get('band', '--'),
-                        'running': iface.get('running', 'false') == 'true'
+                        'running': iface.get('running', 'false') == 'true',
+                        'disabled': iface.get('disabled', 'false') == 'true'
                     })
         
         await websocket.send(json.dumps({
@@ -1029,15 +1106,20 @@ async def handle_start_interference_scan(websocket: WebSocketConn, device_ip: st
         if mt_api:
             try:
                 mt_api.close()
-                print(f"干扰扫描API连接已关闭: {device_ip}")
+                print(f"干扰扫描连接已关闭: {device_ip}")
             except:
                 pass
 
 
-async def handle_get_wireless_interface_config(websocket: WebSocketConn, device_ip: str, username: str, password: str, interface_name: str) -> None:
-    """获取单个无线接口的详细配置"""
-    mt_api = None
-    
+async def handle_wireless_config_polling(websocket: WebSocketConn, device_ip: str, username: str, password: str, interface_name: str) -> None:
+    """无线配置页面轮询模式，独立连接每秒读取所有无线信息"""
+    import time
+    mt_api: MikroTikAPI | None = None
+    POLL_INTERVAL: int = 1
+    READ_TIMEOUT: int = 10
+    MAX_RETRIES: int = 3
+    RETRY_BASE_DELAY: float = 1.0
+
     if not interface_name:
         await websocket.send(json.dumps({
             'type': 'wireless_config',
@@ -1045,42 +1127,18 @@ async def handle_get_wireless_interface_config(websocket: WebSocketConn, device_
             'message': '接口名称不能为空'
         }, ensure_ascii=False))
         return
-    
-    try:
-        mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
-        success, message = mt_api.login()
-        
-        if not success:
-            await websocket.send(json.dumps({
-                'type': 'wireless_config',
-                'status': 'error',
-                'message': f'连接失败: {message}'
-            }, ensure_ascii=False))
-            return
-        
-        mt_api.write_sentence(['/interface/wireless/print', f'?name={interface_name}'])
-        
-        config = {}
+
+    cached_nlevel: int | None = None
+
+    def _read_config_sync(api: MikroTikAPI) -> dict[str, str] | None:
+        config: dict[str, str] = {}
+        api.write_sentence(['/interface/wireless/print', f'?name={interface_name}'])
         while True:
-            try:
-                response = mt_api.read_sentence(timeout=10)
-            except Exception as e:
-                print(f"[无线配置] 读取失败: {e}")
-                break
-            
+            response = api.read_sentence(timeout=READ_TIMEOUT)
             if '!done' in response:
                 break
             if '!trap' in response:
-                error_msg = ''
-                for line in response:
-                    if line.startswith('=message='):
-                        error_msg = line[9:]
-                await websocket.send(json.dumps({
-                    'type': 'wireless_config',
-                    'status': 'error',
-                    'message': error_msg or '获取配置失败'
-                }, ensure_ascii=False))
-                break
+                return None
             if '!re' in response:
                 for line in response:
                     if line.startswith('='):
@@ -1088,99 +1146,161 @@ async def handle_get_wireless_interface_config(websocket: WebSocketConn, device_
                         if len(parts) == 2:
                             key, value = parts
                             config[key] = value
+        return config if config else None
+
+    def _read_security_profiles_sync(api: MikroTikAPI) -> list[str]:
+        profiles: list[str] = []
+        api.write_sentence(['/interface/wireless/security-profiles/print'])
+        while True:
+            response = api.read_sentence(timeout=READ_TIMEOUT)
+            if '!done' in response:
+                break
+            if '!trap' in response:
+                break
+            if '!re' in response:
+                for line in response:
+                    if line.startswith('=name='):
+                        profiles.append(line[6:])
+                        break
+        return profiles
+
+    def _read_license_nlevel_sync(api: MikroTikAPI) -> int | None:
+        api.write_sentence(['/system/license/print'])
+        while True:
+            response = api.read_sentence(timeout=READ_TIMEOUT)
+            if '!done' in response:
+                break
+            if '!trap' in response:
+                break
+            if '!re' in response:
+                for line in response:
+                    if line.startswith('=nlevel='):
+                        try:
+                            return int(line[8:])
+                        except:
+                            pass
+                break
+        return None
+
+    async def _read_all(api: MikroTikAPI) -> tuple[dict[str, str] | None, list[str] | None]:
+        """在一次轮询中读取所有配置信息"""
+        loop = asyncio.get_event_loop()
         
-        print(f"[无线配置] 获取到的配置: {config}")
-        if config:
-            band: str = str(config.get('band', ''))
-            vht_mcs: str = str(config.get('vht-supported-mcs', ''))
-            has_ac: bool = 'ac' in band.lower() or vht_mcs != ''
-            
-            security_profiles = []
+        config = await loop.run_in_executor(None, lambda: _read_config_sync(api))
+        if not config:
+            return None, None
+        
+        security_profiles = await loop.run_in_executor(None, lambda: _read_security_profiles_sync(api))
+        
+        nonlocal cached_nlevel
+        if cached_nlevel is None:
+            cached_nlevel = await loop.run_in_executor(None, lambda: _read_license_nlevel_sync(api))
+        
+        band: str = str(config.get('band', ''))
+        vht_mcs: str = str(config.get('vht-supported-mcs', ''))
+        has_ac: bool = 'ac' in band.lower() or vht_mcs != ''
+        
+        await websocket.send(json.dumps({
+            'type': 'wireless_config',
+            'status': 'success',
+            'config': config,
+            'has_ac': has_ac,
+            'security_profiles': security_profiles,
+            'nlevel': cached_nlevel,
+            'data_complete': True
+        }, ensure_ascii=False))
+        return config, security_profiles
+
+    async def ensure_connected() -> str | None:
+        nonlocal mt_api
+        if mt_api is not None:
             try:
-                mt_api.write_sentence(['/interface/wireless/security-profiles/print'])
-                
-                while True:
-                    try:
-                        response = mt_api.read_sentence(timeout=10)
-                    except Exception:
-                        break
-                    
-                    if '!done' in response:
-                        break
-                    if '!trap' in response:
-                        break
-                    if '!re' in response:
-                        profile_name = None
-                        for line in response:
-                            if line.startswith('=name='):
-                                profile_name = line[6:]
-                                break
-                        if profile_name:
-                            security_profiles.append(profile_name)
-            except Exception as e:
-                print(f"[无线配置] 获取加密配置列表失败: {e}")
-            
-            nlevel = None
+                mt_api.close()
+            except:
+                pass
+            mt_api = None
+        mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
+        success, message = mt_api.login()
+        if not success:
+            return message
+        return None
+
+    consecutive_errors: int = 0
+
+    try:
+        conn_err = await ensure_connected()
+        if conn_err:
+            await websocket.send(json.dumps({
+                'type': 'wireless_config',
+                'status': 'error',
+                'message': f'连接失败: {conn_err}'
+            }, ensure_ascii=False))
+            return
+        
+        assert mt_api is not None  # ensure_connected 成功后 mt_api 必定有效
+        
+        while True:
             try:
-                mt_api.write_sentence(['/system/license/print'])
-                
-                while True:
-                    try:
-                        response = mt_api.read_sentence(timeout=10)
-                    except Exception:
-                        break
-                    
-                    if '!done' in response:
-                        break
-                    if '!trap' in response:
-                        break
-                    if '!re' in response:
-                        for line in response:
-                            if line.startswith('=nlevel='):
-                                try:
-                                    nlevel = int(line[8:])
-                                except:
-                                    pass
-                                break
-                        if nlevel is not None:
+                loop_start = time.monotonic()
+
+                config, _ = await _read_all(mt_api)
+
+                if config is None:
+                    consecutive_errors += 1
+                    retry_delay = min(RETRY_BASE_DELAY * (2 ** (consecutive_errors - 1)), 30)
+                    print(f"[无线配置] 读取失败 ({consecutive_errors}/{MAX_RETRIES})，{retry_delay}s 后重连...")
+
+                    if consecutive_errors >= MAX_RETRIES:
+                        conn_err = await ensure_connected()
+                        if conn_err:
+                            print(f"[无线配置] 重连失败: {conn_err}")
+                            await websocket.send(json.dumps({
+                                'type': 'wireless_config',
+                                'status': 'error',
+                                'message': f'重连失败: {conn_err}'
+                            }, ensure_ascii=False))
                             break
-            except Exception as e:
-                print(f"[无线配置] 获取license失败: {e}")
-            
-            print(f"[无线配置] license nlevel: {nlevel}")
-            
-            await websocket.send(json.dumps({
-                'type': 'wireless_config',
-                'status': 'success',
-                'config': config,
-                'has_ac': has_ac,
-                'security_profiles': security_profiles,
-                'nlevel': nlevel
-            }, ensure_ascii=False))
-        else:
-            await websocket.send(json.dumps({
-                'type': 'wireless_config',
-                'status': 'error',
-                'message': '未找到接口配置'
-            }, ensure_ascii=False))
-        
-        try:
-            async for msg in websocket:
+                        print(f"[无线配置] 重连成功: {device_ip}")
+                        consecutive_errors = 0
+                    else:
+                        await asyncio.sleep(retry_delay)
+                    continue
+                else:
+                    consecutive_errors = 0
+
+                elapsed = time.monotonic() - loop_start
+                wait_time = max(0.2, POLL_INTERVAL - elapsed)
+
                 try:
-                    data = json.loads(msg)
-                    if data.get('action') == 'close':
+                    msg_data = await asyncio.wait_for(websocket.recv(), timeout=wait_time)
+                    msg_json = json.loads(msg_data)
+                    if msg_json.get('action') == 'close':
                         break
-                except:
+                except asyncio.TimeoutError:
                     pass
-        except websockets.exceptions.ConnectionClosed:
-            pass
-        
+                except websockets.exceptions.ConnectionClosed:
+                    break
+
+            except websockets.exceptions.ConnectionClosed:
+                print(f"[无线配置] WebSocket连接已关闭: {device_ip}")
+                break
+            except Exception as e:
+                print(f"[无线配置] 轮询错误: {e}")
+                consecutive_errors += 1
+                if consecutive_errors >= MAX_RETRIES:
+                    conn_err = await ensure_connected()
+                    if conn_err:
+                        print(f"[无线配置] 重连失败: {conn_err}")
+                        break
+                    consecutive_errors = 0
+                else:
+                    await asyncio.sleep(POLL_INTERVAL)
+
     except Exception as e:
-        print(f"[无线配置] 错误: {e}")
+        print(f"[无线配置] 连接错误: {e}")
         try:
             await websocket.send(json.dumps({
-                'type': 'wireless_config',
-                'status': 'error',
+                'type': 'error',
                 'message': str(e)
             }, ensure_ascii=False))
         except:
@@ -1189,7 +1309,7 @@ async def handle_get_wireless_interface_config(websocket: WebSocketConn, device_
         if mt_api:
             try:
                 mt_api.close()
-                print(f"[无线配置] API连接已关闭: {device_ip}")
+                print(f"[无线配置] 连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -1273,62 +1393,84 @@ async def handle_set_wireless_interface_config(websocket: WebSocketConn, device_
         if mt_api:
             try:
                 mt_api.close()
-                print(f"[无线配置更新] API连接已关闭: {device_ip}")
+                print(f"[无线配置更新] 连接已关闭: {device_ip}")
             except:
                 pass
 
 
 async def handle_wireless_interfaces_polling(websocket: WebSocketConn, device_ip: str, username: str, password: str) -> None:
     """处理无线接口长连接"""
+    import time
     mt_api: MikroTikAPI | None = None
     POLL_INTERVAL: int = WIRELESS_INTERVAL
-    READ_TIMEOUT: int = 10
+    READ_TIMEOUT: int = 5
+    MAX_RETRIES: int = 3
+    RETRY_BASE_DELAY: float = 1.0
 
     async def get_wireless_interfaces(api: MikroTikAPI) -> tuple[list[dict[str, str | bool]] | None, str | None]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: _get_wireless_interfaces_sync(api))
 
     def _get_wireless_interfaces_sync(api: MikroTikAPI) -> tuple[list[dict[str, str | bool]] | None, str | None]:
-        interfaces = []
-        try:
-            api.write_sentence(['/interface/wireless/print'])
-            
-            while True:
-                try:
+        max_internal_retries = 2
+        for attempt in range(max_internal_retries + 1):
+            interfaces = []
+            try:
+                api.write_sentence(['/interface/wireless/print',
+                                    '.proplist=name,running,disabled,mode,ssid,frequency,band,channel-width,wireless-protocol'])
+                while True:
                     response = api.read_sentence(timeout=READ_TIMEOUT)
-                except Exception as e:
-                    print(f"同步读取失败: {e}")
-                    return None, str(e)
-                
-                if '!done' in response:
-                    break
-                if '!trap' in response:
-                    break
-                if '!re' in response:
-                    iface = {}
-                    for line in response:
-                        if line.startswith('='):
-                            parts = line[1:].split('=', 1)
-                            if len(parts) == 2:
-                                key, value = parts
-                                iface[key] = value
                     
-                    if iface:
-                        interfaces.append({
-                            'name': iface.get('name', '--'),
-                            'running': iface.get('running', 'false') == 'true',
-                            'disabled': iface.get('disabled', 'false') == 'true',
-                            'mode': iface.get('mode', '--'),
-                            'ssid': iface.get('ssid', '--'),
-                            'frequency': iface.get('frequency', '--'),
-                            'band': iface.get('band', '--'),
-                            'channel_width': iface.get('channel-width', '--'),
-                            'protocol': iface.get('wireless-protocol', '--')
-                        })
-            
-            return interfaces, None
-        except Exception as e:
-            return None, str(e)
+                    if '!done' in response:
+                        break
+                    if '!trap' in response:
+                        break
+                    if '!re' in response:
+                        iface = {}
+                        for line in response:
+                            if line.startswith('='):
+                                parts = line[1:].split('=', 1)
+                                if len(parts) == 2:
+                                    key, value = parts
+                                    iface[key] = value
+                        
+                        if iface:
+                            interfaces.append({
+                                'name': iface.get('name', '--'),
+                                'running': iface.get('running', 'false') == 'true',
+                                'disabled': iface.get('disabled', 'false') == 'true',
+                                'mode': iface.get('mode', '--'),
+                                'ssid': iface.get('ssid', '--'),
+                                'frequency': iface.get('frequency', '--'),
+                                'band': iface.get('band', '--'),
+                                'channel_width': iface.get('channel-width', '--'),
+                                'protocol': iface.get('wireless-protocol', '--')
+                            })
+                
+                return interfaces, None
+            except Exception as e:
+                if attempt >= max_internal_retries:
+                    return None, str(e)
+        
+        return None, "获取无线接口失败（重试耗尽）"
+
+    async def ensure_connected() -> tuple[MikroTikAPI | None, str | None]:
+        """确保 API 连接有效，失效则重新建立"""
+        nonlocal mt_api
+        if mt_api is not None:
+            try:
+                mt_api.close()
+            except:
+                pass
+            mt_api = None
+        
+        mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
+        success, message = mt_api.login()
+        if not success:
+            return None, message
+        return mt_api, None
+
+    consecutive_errors: int = 0
     
     try:
         mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
@@ -1348,37 +1490,34 @@ async def handle_wireless_interfaces_polling(websocket: WebSocketConn, device_ip
             'message': '无线接口连接已建立'
         }, ensure_ascii=False))
         
-        consecutive_errors = 0
-        max_consecutive_errors = 3
-        
         while True:
             try:
+                loop_start = time.monotonic()
+                
                 interfaces, error = await get_wireless_interfaces(mt_api)
                 
                 if error:
                     consecutive_errors += 1
-                    print(f"无线接口读取错误 ({consecutive_errors}/{max_consecutive_errors}): {error}")
+                    retry_delay = min(RETRY_BASE_DELAY * (2 ** (consecutive_errors - 1)), 30)
+                    print(f"无线接口读取错误 ({consecutive_errors}/{MAX_RETRIES}): {error}，{retry_delay}s 后重连...")
                     
-                    if consecutive_errors >= max_consecutive_errors:
-                        print(f"连续错误达到 {max_consecutive_errors} 次，尝试重连...")
-                        try:
-                            mt_api.close()
-                        except:
-                            pass
-                        
-                        mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
-                        success, message = mt_api.login()
-                        if success:
-                            print("重连成功")
-                            consecutive_errors = 0
-                        else:
-                            print(f"重连失败: {message}")
+                    if consecutive_errors >= MAX_RETRIES:
+                        _, conn_err = await ensure_connected()
+                        if conn_err:
+                            print(f"无线接口重连失败: {conn_err}")
+                            await websocket.send(json.dumps({
+                                'type': 'wireless_interfaces',
+                                'status': 'error',
+                                'message': f'重连失败: {conn_err}'
+                            }, ensure_ascii=False))
                             break
+                        print(f"无线接口重连成功: {device_ip}")
+                        consecutive_errors = 0
                     else:
-                        await asyncio.sleep(POLL_INTERVAL)
+                        await asyncio.sleep(retry_delay)
                     continue
-                
-                consecutive_errors = 0
+                else:
+                    consecutive_errors = 0
                 
                 if interfaces is not None:
                     await websocket.send(json.dumps({
@@ -1387,11 +1526,55 @@ async def handle_wireless_interfaces_polling(websocket: WebSocketConn, device_ip
                         'interfaces': interfaces
                     }, ensure_ascii=False))
                 
+                elapsed = time.monotonic() - loop_start
+                wait_time = max(0.2, POLL_INTERVAL - elapsed)
+                
                 try:
-                    message = await asyncio.wait_for(websocket.recv(), timeout=POLL_INTERVAL)
+                    message = await asyncio.wait_for(websocket.recv(), timeout=wait_time)
                     data = json.loads(message)
-                    if data.get('action') == 'stop':
+                    action = data.get('action')
+                    
+                    if action == 'stop':
                         break
+                    elif action == 'set_wireless_interface_config':
+                        interface_name = data.get('interface_name')
+                        config_changes = data.get('config_changes', {})
+                        print(f"[无线接口轮询] 收到配置更新请求: {interface_name}, 变更: {config_changes}")
+                        
+                        if mt_api and interface_name and config_changes:
+                            try:
+                                command = ['/interface/wireless/set', f'=numbers={interface_name}']
+                                for key, value in config_changes.items():
+                                    command.append(f'={key}={value}')
+                                
+                                print(f"[无线接口轮询] 发送命令: {command}")
+                                mt_api.write_sentence(command)
+                                response = mt_api.read_sentence(timeout=10)
+                                print(f"[无线接口轮询] 响应: {response}")
+                                
+                                if '!done' in response:
+                                    await websocket.send(json.dumps({
+                                        'type': 'wireless_config_update',
+                                        'status': 'success',
+                                        'message': '配置更新成功'
+                                    }, ensure_ascii=False))
+                                elif '!trap' in response:
+                                    error_msg = ''
+                                    for line in response:
+                                        if line.startswith('=message='):
+                                            error_msg = line[9:]
+                                    await websocket.send(json.dumps({
+                                        'type': 'wireless_config_update',
+                                        'status': 'error',
+                                        'message': error_msg or '配置更新失败'
+                                    }, ensure_ascii=False))
+                            except Exception as e:
+                                print(f"[无线接口轮询] 配置更新错误: {e}")
+                                await websocket.send(json.dumps({
+                                    'type': 'wireless_config_update',
+                                    'status': 'error',
+                                    'message': str(e)
+                                }, ensure_ascii=False))
                 except asyncio.TimeoutError:
                     pass
                 except websockets.exceptions.ConnectionClosed:
@@ -1409,7 +1592,15 @@ async def handle_wireless_interfaces_polling(websocket: WebSocketConn, device_ip
                     }, ensure_ascii=False))
                 except:
                     pass
-                await asyncio.sleep(POLL_INTERVAL)
+                consecutive_errors += 1
+                if consecutive_errors >= MAX_RETRIES:
+                    _, conn_err = await ensure_connected()
+                    if conn_err:
+                        print(f"无线接口重连失败: {conn_err}")
+                        break
+                    consecutive_errors = 0
+                else:
+                    await asyncio.sleep(POLL_INTERVAL)
         
     except Exception as e:
         print(f"无线接口长连接错误: {e}")
@@ -1424,7 +1615,7 @@ async def handle_wireless_interfaces_polling(websocket: WebSocketConn, device_ip
         if mt_api:
             try:
                 mt_api.close()
-                print(f"无线接口API连接已关闭: {device_ip}")
+                print(f"无线接口连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -1550,7 +1741,7 @@ async def handle_wireless_clients_monitor(websocket: WebSocketConn, device_ip: s
         if mt_api:
             try:
                 mt_api.close()
-                print(f"[终端监控] API连接已关闭: {device_ip}")
+                print(f"[终端监控] 连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -1662,7 +1853,7 @@ async def handle_security_profiles_monitor(websocket: WebSocketConn, device_ip: 
                 if not mt_api or not mt_api.logged_in:
                     if stop_requested:
                         break
-                    print(f"[加密配置] API连接断开，尝试重连...")
+                    print(f"[加密配置] 连接断开，尝试重连...")
                     if mt_api:
                         try:
                             mt_api.close()
@@ -1746,7 +1937,7 @@ async def handle_security_profiles_monitor(websocket: WebSocketConn, device_ip: 
             try:
                 mt_api.close()
                 if not stop_requested:
-                    print(f"[加密配置] API连接已关闭: {device_ip}")
+                    print(f"[加密配置] 连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -1822,7 +2013,7 @@ async def handle_ip_addresses_monitor(websocket: WebSocketConn, device_ip: str, 
                 if not mt_api or not mt_api.logged_in:
                     if stop_requested:
                         break
-                    print(f"[IP地址] API连接断开，尝试重连...")
+                    print(f"[IP地址] 连接断开，尝试重连...")
                     if mt_api:
                         try:
                             mt_api.close()
@@ -1916,7 +2107,7 @@ async def handle_ip_addresses_monitor(websocket: WebSocketConn, device_ip: str, 
             try:
                 mt_api.close()
                 if not stop_requested:
-                    print(f"[IP地址] API连接已关闭: {device_ip}")
+                    print(f"[IP地址] 连接已关闭: {device_ip}")
             except:
                 pass
 
@@ -2367,17 +2558,18 @@ async def handle_set_device_name(websocket: WebSocketConn, device_ip: str, usern
 async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username: str, password: str, device_mac: str = None) -> None:
     """处理日志监控 WebSocket 长连接
     
-    流程（参考样例代码）：
-    1. 通过 librouteros API 读取 log.0.txt 文件获取所有历史日志
-    2. 使用 processed_logs 集合去重，推送历史日志
-    3. 每秒调用 /log/print 增量更新新日志
-    4. 缓存仅登出时清除
+    使用 MikroTik follow=yes 模式实现真正的实时日志推送：
+    1. 先通过 API 读取历史日志
+    2. 使用 follow=yes 模式监听新日志，设备有新日志时主动推送
+    3. 没有新日志时不产生任何网络请求
+    4. 缓存仅在登出或断开连接时清除
     """
     loop = asyncio.get_event_loop()
     stop_event = threading.Event()
     ws_monitor_task = None
     cache = get_log_cache(device_ip)
-    ros_api = None
+    mt_api = None
+    follow_thread = None
 
     async def _monitor_ws_connection():
         try:
@@ -2387,162 +2579,111 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
             pass
         finally:
             stop_event.set()
-            if ros_api:
+            if mt_api:
                 try:
-                    ros_api.close()
+                    mt_api.close()
                 except:
                     pass
             print(f"[日志监控] WebSocket断开: {device_ip}")
 
-    def read_log_file_via_api():
-        """通过 librouteros API 读取日志文件内容"""
+    def follow_logs_callback(log_entry):
+        """follow模式回调函数，当有新日志时调用"""
         try:
-            nonlocal ros_api
-            if not ros_api:
-                print(f"[日志监控] 建立 librouteros 连接到 {device_ip}...")
-                ros_api = librouteros_connect(
-                    host=device_ip,
-                    username=username,
-                    password=password,
-                    port=8728
-                )
-                print(f"[日志监控] librouteros 连接成功: {device_ip}")
+            if stop_event.is_set():
+                return
             
-            # 尝试读取日志文件
-            log_files = ['/flash/log.0.txt', 'log.0.txt']
-            file_content = None
-            
-            for file_path in log_files:
-                try:
-                    # 使用 /file/print 读取文件
-                    files = list(ros_api('/file/print', f'?name={file_path}'))
-                    if files:
-                        print(f"[日志监控] 找到日志文件: {file_path}")
-                        # 使用 /file/get 获取文件内容
-                        result = list(ros_api('/file/get', f'=numbers={file_path}', '=content=yes'))
-                        if result and 'content' in result[0]:
-                            file_content = result[0]['content']
-                            print(f"[日志监控] 成功读取文件内容: {len(file_content)} 字符")
-                            break
-                except Exception as e:
-                    print(f"[日志监控] 读取 {file_path} 失败: {e}")
-                    continue
-            
-            if not file_content:
-                print(f"[日志监控] 无法读取日志文件，尝试 /log/print")
-                # 降级到 /log/print
-                logs = list(ros_api('/log/print'))
-                return logs, 'api'
-            
-            # 解析文件内容
-            logs = []
-            for line in file_content.split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                entry = _parse_log_line(line)
-                if entry:
-                    logs.append(entry)
-            
-            print(f"[日志监控] 从文件解析到 {len(logs)} 条日志")
-            return logs, 'file'
-            
-        except Exception as e:
-            print(f"[日志监控] 读取日志文件失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return [], 'error'
-
-    def _parse_log_line(line):
-        """解析单行日志"""
-        import re
-        from datetime import datetime
-        # 匹配格式: [Apr/15/2026 04:41:34] info message 或 Apr/15/2026 04:41:34 info message
-        pattern = r'^\[?([\w]{3}/\d{1,2}/\d{4}\s+\d{2}:\d{2}:\d{2})\]?\s+(\S+)\s+(.*)$'
-        match = re.match(pattern, line)
-        if match:
-            time_str = match.group(1)
-            raw_time = ''
-            try:
-                dt = datetime.strptime(time_str, '%b/%d/%Y %H:%M:%S')
-                raw_time = dt.strftime('%b/%d/%Y %H:%M:%S').lower()
-                time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                pass
-            return {
-                'time': time_str,
-                'raw_time': raw_time,
-                'topics': match.group(2),
-                'message': match.group(3)
-            }
-        return None
-
-    def do_incremental_fetch():
-        """增量获取新日志（参考样例代码）"""
-        try:
-            nonlocal ros_api
-            if not ros_api:
-                print(f"[日志监控] 建立 librouteros 连接到 {device_ip}...")
-                ros_api = librouteros_connect(
-                    host=device_ip,
-                    username=username,
-                    password=password,
-                    port=8728
-                )
-                print(f"[日志监控] librouteros 连接成功: {device_ip}")
-            
-            # 获取所有日志
-            new_logs = list(ros_api('/log/print'))
-            
-            if not new_logs:
-                print(f"[日志监控] 没有新日志")
-                return []
-            
-            # 直接添加所有日志，不去重
-            counter = cache.get('log_counter', 0)
-            result_logs = []
-            
-            for log in new_logs:
-                timestamp = log.get('time', 'N/A')
-                message = log.get('message', 'N/A')
-                topics = log.get('topics', 'N/A')
-                entry = {
-                    'time': timestamp,
-                    'raw_time': timestamp.lower() if timestamp else '',
-                    'topics': topics,
-                    'message': message,
-                    'seq': counter,
-                }
-                result_logs.append(entry)
-                counter += 1
-            
-            # 更新缓存
+            # 检查是否是新日志（通过ID判断）
+            log_id = log_entry.get('id', '') or log_entry.get('.id', '')
             with cache['lock']:
-                cache['log_counter'] = counter
-                for log in result_logs:
-                    cache['logs'].append(log)
-                if cache['logs']:
-                    last_log = cache['logs'][-1]
-                    cache['last_time'] = last_log.get('time', '') or cache['last_time']
-                    cache['last_raw_time'] = last_log.get('raw_time', '') or cache['last_raw_time']
+                last_cached_id = cache.get('last_id', '')
+                # 如果ID为空或与缓存中的ID相同，说明是旧日志，忽略
+                if not log_id or log_id == last_cached_id:
+                    return
+                
+                # 检查是否已经在缓存中（避免follow模式启动时推送的旧日志）
+                cached_ids = cache.get('log_ids', set())
+                if log_id in cached_ids:
+                    return
+                
+                # 是新日志，添加到缓存并推送
+                counter = cache.get('log_counter', 0)
+                log_entry['seq'] = counter
+                cache['log_counter'] = counter + 1
+                cache['logs'].append(log_entry)
+                cache['last_id'] = log_id
+                cache['last_time'] = log_entry.get('time', '')
+                cache['last_raw_time'] = log_entry.get('raw_time', '')
+                
+                # 记录ID到集合中
+                if 'log_ids' not in cache:
+                    cache['log_ids'] = set()
+                cache['log_ids'].add(log_id)
+                
                 # 限制缓存大小
                 if len(cache['logs']) > 10000:
                     cache['logs'] = cache['logs'][-5000:]
-            
-            print(f"[日志监控] 获取到 {len(new_logs)} 条日志")
-            return result_logs
+                    # 同时清理ID集合
+                    if len(cache['log_ids']) > 10000:
+                        cache['log_ids'] = set(list(cache['log_ids'])[-5000:])
+                
+                # 异步推送到前端
+                asyncio.run_coroutine_threadsafe(
+                    websocket.send(json.dumps({
+                        'type': 'logs',
+                        'status': 'incremental',
+                        'logs': [log_entry],
+                        'count': 1
+                    }, ensure_ascii=False)),
+                    loop
+                )
         except Exception as e:
-            print(f"[日志监控] 增量获取失败: {e}")
+            print(f"[日志监控] follow回调错误: {e}")
+
+    def start_follow_mode():
+        """启动follow模式监听新日志"""
+        try:
+            nonlocal mt_api
+            if not mt_api:
+                print(f"[日志监控] 建立API连接到 {device_ip}...")
+                mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
+                success, message = mt_api.login()
+                if not success:
+                    print(f"[日志监控] API登录失败: {message}")
+                    return
+            
+            print(f"[日志监控] 启动follow模式监听新日志: {device_ip}")
+            # 使用follow=yes模式，设备有新日志时会主动推送
+            mt_api.follow_logs(callback=follow_logs_callback, stop_event=stop_event, timeout=5)
+            
+        except Exception as e:
+            print(f"[日志监控] follow模式启动失败: {e}")
             import traceback
             traceback.print_exc()
-            if ros_api:
-                try:
-                    ros_api.close()
-                except:
-                    pass
-                ros_api = None
-            return []
 
+    def read_log_file_via_api():
+        """通过 API 读取历史日志"""
+        try:
+            nonlocal mt_api
+            if not mt_api:
+                print(f"[日志监控] 建立API连接到 {device_ip}...")
+                mt_api = MikroTikAPI(device_ip, username, password, port=8728, use_ssl=False)
+                success, message = mt_api.login()
+                if not success:
+                    print(f"[日志监控] API登录失败: {message}")
+                    return [], 'error'
+                print(f"[日志监控] API连接成功: {device_ip}")
+            
+            # 使用 get_logs 获取历史日志
+            logs = mt_api.get_logs(limit=2000)
+            print(f"[日志监控] 获取到 {len(logs)} 条历史日志")
+            return logs, 'api'
+            
+        except Exception as e:
+            print(f"[日志监控] 读取日志失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return [], 'error'
+            
     try:
         ws_monitor_task = asyncio.create_task(_monitor_ws_connection())
 
@@ -2552,15 +2693,24 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
             'message': '日志连接已建立'
         }, ensure_ascii=False))
 
+        # 1. 先检查是否有缓存
         use_cache = False
         with cache['lock']:
             use_cache = cache.get('ftp_done', False) and bool(cache['logs'])
             print(f"[日志监控] 缓存状态: logs_count={len(cache.get('logs', []))}, use_cache={use_cache}")
 
+        # 2. 如果有缓存，直接推送缓存日志
         if use_cache:
             with cache['lock']:
                 cached_logs = list(cache['logs'])
                 cached_seq = cache.get('log_counter', 0)
+                # 确保缓存中有log_ids集合
+                if 'log_ids' not in cache:
+                    cache['log_ids'] = set()
+                    for log in cached_logs:
+                        log_id = log.get('id', '') or log.get('.id', '')
+                        if log_id:
+                            cache['log_ids'].add(log_id)
 
             print(f"[日志监控] 使用缓存: {len(cached_logs)} 条日志, seq={cached_seq}")
             await websocket.send(json.dumps({
@@ -2592,11 +2742,12 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
                     'total': len(cached_logs)
                 }, ensure_ascii=False))
         else:
-            print(f"[日志监控] 开始通过API读取日志文件: {device_ip}")
+            # 3. 没有缓存，获取历史日志
+            print(f"[日志监控] 开始读取历史日志: {device_ip}")
             await websocket.send(json.dumps({
                 'type': 'logs',
                 'status': 'downloading',
-                'message': '正在读取日志文件...'
+                'message': '正在读取日志...'
             }, ensure_ascii=False))
 
             def fetch_logs():
@@ -2619,28 +2770,35 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
                     }, ensure_ascii=False))
                     return
 
-                # 直接添加序号，不去重
+                # 添加序号并记录ID
                 result_logs = []
+                log_ids = set()
                 for i, log in enumerate(all_logs):
                     entry = log.copy()
                     entry['seq'] = i
                     result_logs.append(entry)
+                    log_id = entry.get('id', '') or entry.get('.id', '')
+                    if log_id:
+                        log_ids.add(log_id)
 
                 counter = len(result_logs)
 
+                # 更新缓存
                 with cache['lock']:
                     cache['log_counter'] = counter
                     cache['logs'] = result_logs
+                    cache['log_ids'] = log_ids
                     if result_logs:
                         cache['last_time'] = result_logs[-1].get('time', '')
                         cache['last_raw_time'] = result_logs[-1].get('raw_time', '')
+                        cache['last_id'] = result_logs[-1].get('id', '') or result_logs[-1].get('.id', '')
                     cache['ftp_done'] = True
 
                 print(f"[日志监控] 获取到 {len(result_logs)} 条日志，开始分批推送")
 
+                # 分批推送
                 batch_size = 1000
                 total_batches = (len(result_logs) + batch_size - 1) // batch_size
-                print(f"[日志监控] 总共 {total_batches} 个批次，每批 {batch_size} 条")
                 
                 for i in range(0, len(result_logs), batch_size):
                     if stop_event.is_set():
@@ -2656,7 +2814,7 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
                             'offset': i,
                             'total': len(result_logs)
                         }, ensure_ascii=False))
-                        print(f"[日志监控] 批次 {batch_num}/{total_batches} 已发送 (offset={i}, count={len(batch)})")
+                        print(f"[日志监控] 批次 {batch_num}/{total_batches} 已发送")
                     except Exception as e:
                         print(f"[日志监控] 批次 {batch_num} 发送失败: {e}")
                         break
@@ -2679,41 +2837,17 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
                 }, ensure_ascii=False))
                 return
 
-        print(f"[日志监控] 开始增量更新: {device_ip}")
-        while not stop_event.is_set():
-            if is_ws_closed(websocket):
-                break
-            try:
+        # 4. 启动 follow 模式监听新日志（真正的实时推送，有新日志时才推送）
+        print(f"[日志监控] 启动follow模式监听新日志: {device_ip}")
+        follow_thread = threading.Thread(target=start_follow_mode, daemon=True)
+        follow_thread.start()
+
+        # 5. 等待 WebSocket 断开或停止事件
+        try:
+            while not stop_event.is_set():
                 await asyncio.sleep(1)
-                if stop_event.is_set():
-                    break
-
-                new_logs = do_incremental_fetch()
-
-                if stop_event.is_set():
-                    break
-
-                if new_logs:
-                    await websocket.send(json.dumps({
-                        'type': 'logs',
-                        'status': 'incremental',
-                        'logs': new_logs,
-                        'count': len(new_logs)
-                    }, ensure_ascii=False))
-
-            except websockets.exceptions.ConnectionClosed:
-                break
-            except Exception as e:
-                if stop_event.is_set():
-                    break
-                print(f"[日志监控] 增量更新错误: {e}")
-                if ros_api:
-                    try:
-                        ros_api.close()
-                    except:
-                        pass
-                    ros_api = None
-                await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            pass
 
     except websockets.exceptions.ConnectionClosed:
         pass
@@ -2744,9 +2878,9 @@ async def handle_logs_monitor(websocket: WebSocketConn, device_ip: str, username
                 await ws_monitor_task
             except asyncio.CancelledError:
                 pass
-        if ros_api:
+        if mt_api:
             try:
-                ros_api.close()
+                mt_api.close()
                 print(f"[日志监控] 连接已关闭: {device_ip}")
             except:
                 pass
@@ -2815,7 +2949,7 @@ async def handle_websocket(websocket: WebSocketConn) -> None:
         if action == 'get_wireless_interface_config':
             interface_name = data.get('interface_name')
             print(f"[无线配置请求] 接口名称: '{interface_name}'")
-            await handle_get_wireless_interface_config(websocket, device_ip, username, password, interface_name)
+            await handle_wireless_config_polling(websocket, device_ip, username, password, interface_name)
             return
         if action == 'set_wireless_interface_config':
             interface_name = data.get('interface_name')
@@ -2865,14 +2999,16 @@ async def handle_websocket(websocket: WebSocketConn) -> None:
                 if old_api:
                     try:
                         old_api.close()
-                        print(f"关闭设备 {device_ip} 的旧 API 连接")
+                        print(f"关闭设备 {device_ip} 的旧连接")
                     except:
                         pass
                 del device_api_connections[device_ip]
 
-        with connections_lock:
-            if device_ip in active_connections:
-                active_connections[device_ip].clear()
+        # 注意：不清除 active_connections，因为可能还有其他子连接（如接口轮询、无线接口轮询等）正在使用
+        # 只在 unregister_connection 时，当最后一个连接断开时才清理
+        # with connections_lock:
+        #     if device_ip in active_connections:
+        #         active_connections[device_ip].clear()
 
         await register_connection(websocket, device_ip)
 

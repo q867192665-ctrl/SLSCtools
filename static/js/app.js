@@ -87,7 +87,7 @@ const API_BASE = window.location.origin;
 
             sortedDevices.forEach(function(device) {
                 const identity = device['Identity'] || device.identity || 'Unknown';
-                const ip = device['IPv4-Address'] || device.ipv4_address || device.ip || 'N/A';
+                const ip = device['IPv4-Address'] || device.ipv4_address || device.ip || '未配置IP地址';
                 const mac = device['MAC-Address'] || device.mac_address || 'N/A';
                 let version = device['Version'] || device.version || 'N/A';
                 const uptime = device['Uptime'] || device.uptime || 'N/A';
@@ -502,7 +502,7 @@ const API_BASE = window.location.origin;
                     if (msg.includes('timeout') || msg.includes('timed out') || msg.includes('超时')) {
                         errorMsg = '连接超时，请检查设备IP地址是否正确';
                     } else if (msg.includes('refused') || msg.includes('connection refused') || msg.includes('连接被拒绝')) {
-                        errorMsg = '连接被拒绝，请检查设备API服务是否开启';
+                        errorMsg = '连接被拒绝，请检查设备服务是否开启';
                     } else if (msg.includes('no route') || msg.includes('unreachable') || msg.includes('不可达')) {
                         errorMsg = '设备不可达，请检查网络连接';
                     } else if (msg.includes('用户名或密码错误') || msg.includes('password') || msg.includes('auth') || msg.includes('credential')) {
@@ -510,7 +510,7 @@ const API_BASE = window.location.origin;
                     } else if (msg.includes('请输入')) {
                         errorMsg = result.message;
                     } else if (msg.includes('legacy api:') || msg.includes('legacy ssl api:')) {
-                        errorMsg = '无法连接设备API，请检查IP地址和API端口（8728/8729）是否开放';
+                        errorMsg = '无法连接设备，请检查IP地址和端口是否开放';
                     }
                     
                     showLoginErrorModal(errorMsg);
@@ -846,41 +846,48 @@ const API_BASE = window.location.origin;
         function loadLogsContent() {
             logAutoScroll = true;
             logSeqCounter = 0;
+            
+            // 先关闭旧的 WebSocket 连接，避免旧连接继续推送日志
             stopLogPolling();
-
-            const contentBody = document.getElementById('content-body');
-            contentBody.innerHTML = `
-                <div class="config-card" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
-                    <div class="config-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                        <h3>设备日志</h3>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #aaa; cursor: pointer;">
-                                <input type="checkbox" id="log-auto-scroll" checked onchange="logAutoScroll = this.checked;">
-                                自动滚动
-                            </label>
-                            <span id="log-status" style="font-size: 11px; color: #888;"></span>
-                            <button class="btn btn-refresh" onclick="clearLogs()" style="font-size: 12px; padding: 4px 10px;">清空</button>
-                            <button class="btn btn-refresh" onclick="refreshLogs()" style="font-size: 12px; padding: 4px 10px;">刷新</button>
+            
+            // 等待一小段时间确保旧连接完全关闭
+            setTimeout(() => {
+                // 清空内容并创建新的 DOM
+                const contentBody = document.getElementById('content-body');
+                contentBody.innerHTML = `
+                    <div class="config-card" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
+                        <div class="config-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                            <h3>设备日志</h3>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #aaa; cursor: pointer;">
+                                    <input type="checkbox" id="log-auto-scroll" checked onchange="logAutoScroll = this.checked;">
+                                    自动滚动
+                                </label>
+                                <span id="log-status" style="font-size: 11px; color: #888;"></span>
+                                <button class="btn btn-refresh" onclick="clearLogs()" style="font-size: 12px; padding: 4px 10px;">清空</button>
+                                <button class="btn btn-refresh" onclick="refreshLogs()" style="font-size: 12px; padding: 4px 10px;">刷新</button>
+                            </div>
+                        </div>
+                        <div id="log-container" style="flex: 1; overflow-y: auto; background: #1e1e2e; border-radius: 6px; padding: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.6;">
+                            <div id="log-entries" style="white-space: pre-wrap; word-break: break-all;"></div>
+                            <div id="log-loading" style="text-align: center; padding: 40px; color: #666;">
+                                正在连接日志服务...
+                            </div>
                         </div>
                     </div>
-                    <div id="log-container" style="flex: 1; overflow-y: auto; background: #1e1e2e; border-radius: 6px; padding: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.6;">
-                        <div id="log-entries" style="white-space: pre-wrap; word-break: break-all;"></div>
-                        <div id="log-loading" style="text-align: center; padding: 40px; color: #666;">
-                            正在连接日志服务...
-                        </div>
-                    </div>
-                </div>
-            `;
+                `;
 
-            const logContainer = document.getElementById('log-container');
-            logContainer.addEventListener('scroll', function() {
-                const atBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 30;
-                logAutoScroll = atBottom;
-                const checkbox = document.getElementById('log-auto-scroll');
-                if (checkbox) checkbox.checked = logAutoScroll;
-            });
+                const logContainer = document.getElementById('log-container');
+                logContainer.addEventListener('scroll', function() {
+                    const atBottom = logContainer.scrollHeight - logContainer.scrollTop - logContainer.clientHeight < 30;
+                    logAutoScroll = atBottom;
+                    const checkbox = document.getElementById('log-auto-scroll');
+                    if (checkbox) checkbox.checked = logAutoScroll;
+                });
 
-            connectLogWebSocket();
+                // 建立新的 WebSocket 连接
+                connectLogWebSocket();
+            }, 200);
         }
 
         function connectLogWebSocket() {
@@ -953,7 +960,7 @@ const API_BASE = window.location.origin;
                     break;
 
                 case 'ftp_failed':
-                    if (logLoading) logLoading.textContent = data.message || 'FTP下载失败，改用API获取...';
+                    if (logLoading) logLoading.textContent = data.message || 'FTP下载失败，改用其他方式获取...';
                     break;
 
                 case 'incremental':
@@ -1146,9 +1153,13 @@ const API_BASE = window.location.origin;
                 <div class="config-card">
                     <div class="config-card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <h3>无线接口</h3>
-                        <button id="interference-scan-btn" class="btn btn-refresh" onclick="startInterferenceScan()">
-                            干扰扫描
-                        </button>
+                        <div class="interface-buttons">
+                            <button class="btn btn-enable" id="btn-enable-wireless" onclick="handleEnableWirelessInterface()" disabled style="opacity: 0.5;">启用</button>
+                            <button class="btn btn-disable" id="btn-disable-wireless" onclick="handleDisableWirelessInterface()" disabled style="opacity: 0.5;">禁用</button>
+                            <button id="interference-scan-btn" class="btn btn-refresh" onclick="startInterferenceScan()">
+                                干扰扫描
+                            </button>
+                        </div>
                     </div>
                     <div class="config-card-body">
                         <table class="data-table">
@@ -1548,6 +1559,12 @@ const API_BASE = window.location.origin;
                                     `;
                                 }
                             }
+                        } else if (data.type === 'wireless_config_update') {
+                            if (data.status === 'success') {
+                                showNetworkAlert('操作成功', 'success');
+                            } else {
+                                showNetworkAlert('操作失败: ' + (data.message || '未知错误'), 'error');
+                            }
                         } else if (data.type === 'error') {
                             const tbody = document.getElementById('wireless-interfaces-tbody');
                             if (tbody) {
@@ -1584,6 +1601,8 @@ const API_BASE = window.location.origin;
                 wirelessInterfacesWs = null;
             }
             lastWirelessInterfaces = null;
+            wirelessInterfacesCache = null;
+            selectedWirelessInterface = null;
         }
         
         let wirelessClientsWs = null;
@@ -2811,6 +2830,76 @@ const API_BASE = window.location.origin;
         }
         
         let lastWirelessInterfaces = null;
+        let wirelessInterfacesCache = null;
+        let selectedWirelessInterface = null;
+        
+        function selectWirelessInterface(ifaceName, isDisabled) {
+            document.querySelectorAll('#wireless-interfaces-tbody tr').forEach(function(row) {
+                row.classList.remove('selected-row');
+            });
+            
+            const selectedRow = document.querySelector(`#wireless-interfaces-tbody tr[data-interface="${ifaceName}"]`);
+            if (selectedRow) {
+                selectedRow.classList.add('selected-row');
+                selectedWirelessInterface = { name: ifaceName, disabled: isDisabled };
+            }
+            
+            updateWirelessInterfaceButtons();
+        }
+        
+        function updateWirelessInterfaceButtons() {
+            const enableBtn = document.getElementById('btn-enable-wireless');
+            const disableBtn = document.getElementById('btn-disable-wireless');
+            
+            if (!enableBtn || !disableBtn) return;
+            
+            if (!selectedWirelessInterface) {
+                enableBtn.disabled = true;
+                disableBtn.disabled = true;
+                enableBtn.style.opacity = '0.5';
+                disableBtn.style.opacity = '0.5';
+            } else {
+                if (selectedWirelessInterface.disabled) {
+                    enableBtn.disabled = false;
+                    disableBtn.disabled = true;
+                    enableBtn.style.opacity = '1';
+                    disableBtn.style.opacity = '0.5';
+                } else {
+                    enableBtn.disabled = true;
+                    disableBtn.disabled = false;
+                    enableBtn.style.opacity = '0.5';
+                    disableBtn.style.opacity = '1';
+                }
+            }
+        }
+        
+        function handleEnableWirelessInterface() {
+            if (!selectedWirelessInterface || !selectedWirelessInterface.disabled) return;
+            toggleWirelessInterface(selectedWirelessInterface.name, true);
+        }
+        
+        function handleDisableWirelessInterface() {
+            if (!selectedWirelessInterface || selectedWirelessInterface.disabled) return;
+            toggleWirelessInterface(selectedWirelessInterface.name, false);
+        }
+        
+        function toggleWirelessInterface(interfaceName, isEnable) {
+            showInterfaceModal(interfaceName, isEnable, function() {
+                fetch(`${API_BASE}/api/interface-toggle?ip=${currentSession.ip}&interface=${encodeURIComponent(interfaceName)}&action=${isEnable ? 'enable' : 'disable'}`)
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.status === 'success') {
+                            refreshWirelessInterfacesIfActive();
+                        } else {
+                            showNetworkAlert('操作失败: ' + result.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        showNetworkAlert('操作失败: ' + error.message, 'error');
+                    });
+            });
+        }
+        
         let wirelessConfigWs = null;
         let wirelessOriginalConfig = null;
         let wirelessCurrentInterfaceName = null;
@@ -3072,6 +3161,8 @@ const API_BASE = window.location.origin;
                 wirelessConfigWs = null;
             }
             
+            var configFormShown = false;  // 标记首次加载完成，后续轮询只更新数据不重复渲染
+            
             const wsUrl = `${WS_BASE}`;
             wirelessConfigWs = new WebSocket(wsUrl);
             
@@ -3093,7 +3184,7 @@ const API_BASE = window.location.origin;
                     console.log('[无线配置] 收到消息:', data);
                     
                     if (data.type === 'wireless_config') {
-                        if (data.status === 'success' && data.config) {
+                        if (data.status === 'success' && data.config && data.data_complete) {
                             wirelessHasAc80 = data.has_ac || false;
                             const currentBand = data.config['band'] || '';
                             
@@ -3105,43 +3196,47 @@ const API_BASE = window.location.origin;
                             
                             console.log('[无线配置] has_ac:', wirelessHasAc80, 'band:', currentBand, 'nlevel:', wirelessNlevel);
                             
-                            updateModeOptions(wirelessNlevel);
-                            updateBandOptions(wirelessHasAc80, currentBand);
-                            updateChannelWidthOptions(wirelessHasAc80, currentBand);
-                            
-                            if (data.security_profiles && data.security_profiles.length > 0) {
-                                updateSecurityProfileOptions(data.security_profiles);
-                            }
-                            
-                            populateWirelessConfig(data.config);
-                            generateFrequencyList(data.config['channel-width'] || '20mhz', wirelessHasAc80, currentBand);
-                            
-                            const currentFreq = data.config['frequency'];
-                            if (currentFreq) {
-                                const freqSelect = document.getElementById('wc-frequency');
-                                if (freqSelect) {
-                                    const options = freqSelect.querySelectorAll('option');
-                                    let found = false;
-                                    for (const opt of options) {
-                                        if (opt.value === currentFreq) {
+                            if (!configFormShown) {
+                                // 首次数据完整才渲染表单
+                                configFormShown = true;
+                                updateModeOptions(wirelessNlevel);
+                                updateBandOptions(wirelessHasAc80, currentBand);
+                                updateChannelWidthOptions(wirelessHasAc80, currentBand);
+                                
+                                if (data.security_profiles && data.security_profiles.length > 0) {
+                                    updateSecurityProfileOptions(data.security_profiles);
+                                }
+                                
+                                populateWirelessConfig(data.config);
+                                generateFrequencyList(data.config['channel-width'] || '20mhz', wirelessHasAc80, currentBand);
+                                
+                                const currentFreq = data.config['frequency'];
+                                if (currentFreq) {
+                                    const freqSelect = document.getElementById('wc-frequency');
+                                    if (freqSelect) {
+                                        const options = freqSelect.querySelectorAll('option');
+                                        let found = false;
+                                        for (const opt of options) {
+                                            if (opt.value === currentFreq) {
+                                                freqSelect.value = currentFreq;
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if (!found) {
+                                            const newOption = document.createElement('option');
+                                            newOption.value = currentFreq;
+                                            newOption.textContent = currentFreq;
+                                            freqSelect.appendChild(newOption);
                                             freqSelect.value = currentFreq;
-                                            found = true;
-                                            break;
                                         }
                                     }
-                                    if (!found) {
-                                        const newOption = document.createElement('option');
-                                        newOption.value = currentFreq;
-                                        newOption.textContent = currentFreq;
-                                        freqSelect.appendChild(newOption);
-                                        freqSelect.value = currentFreq;
-                                    }
                                 }
+                                
+                                loadingDiv.style.display = 'none';
+                                formDiv.style.display = 'grid';
                             }
-                            
-                            loadingDiv.style.display = 'none';
-                            formDiv.style.display = 'grid';
-                        } else {
+                        } else if (!configFormShown && data.status !== 'success') {
                             loadingDiv.innerHTML = `
                                 <div style="color: #e74c3c; text-align: center;">
                                     <span style="font-size: 24px;">⚠️</span>
@@ -3325,8 +3420,6 @@ const API_BASE = window.location.origin;
                 wirelessConfigWs = null;
             }
         }
-        
-        let selectedWirelessRow = null;
         
         function showConfigErrorModal(message) {
             const modal = document.getElementById('config-error-modal');
@@ -3559,14 +3652,6 @@ const API_BASE = window.location.origin;
             };
         }
         
-        function selectWirelessRow(row) {
-            if (selectedWirelessRow) {
-                selectedWirelessRow.classList.remove('wireless-row-selected');
-            }
-            row.classList.add('wireless-row-selected');
-            selectedWirelessRow = row;
-        }
-        
         function getModeText(mode) {
             const modeMap = {
                 'ap-bridge': 'AP',
@@ -3576,9 +3661,13 @@ const API_BASE = window.location.origin;
                 'station-pseudobridge': '客户端对接',
                 'station-pseudobridge-clone': '客户端对接克隆',
                 'wds-slave': 'WDS从站',
-                'bridge': '网桥',
+                'bridge': 'PTP',
                 'alignment-only': '仅对齐',
-                'nstreme-dual-slave': 'Nstreme双从站'
+                'nstreme-dual-slave': 'Nstreme双从站',
+                'ptp': 'PTP',
+                'ptp-pmp': 'PTP',
+                'nstreme': 'Nstreme',
+                'nv2': 'NV2'
             };
             return modeMap[mode] || mode || '--';
         }
@@ -3588,6 +3677,11 @@ const API_BASE = window.location.origin;
             if (!tbody) return;
             
             if (!interfaces || interfaces.length === 0) {
+                if (wirelessInterfacesCache && wirelessInterfacesCache.length > 0) {
+                    console.log('[无线接口] 获取到空列表，使用缓存数据（可能是网络问题）');
+                    renderWirelessInterfaces(wirelessInterfacesCache, tbody);
+                    return;
+                }
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="8" style="text-align: center; color: #666; padding: 20px;">
@@ -3596,17 +3690,29 @@ const API_BASE = window.location.origin;
                     </tr>
                 `;
                 lastWirelessInterfaces = null;
-                selectedWirelessRow = null;
+                selectedWirelessInterface = null;
                 return;
             }
             
-            const lastInterfaces = lastWirelessInterfaces;
-            lastWirelessInterfaces = interfaces;
+            if (wirelessInterfacesCache && interfaces.length < wirelessInterfacesCache.length) {
+                console.log(`[无线接口] 接口数量减少 (${interfaces.length} < ${wirelessInterfacesCache.length})，使用缓存数据（可能是网络问题）`);
+                renderWirelessInterfaces(wirelessInterfacesCache, tbody);
+                return;
+            }
             
-            if (!lastInterfaces) {
-                tbody.innerHTML = interfaces.map(iface => `
-                    <tr data-name="${iface.name}" onclick="selectWirelessRow(this)" ondblclick="openWirelessConfigModal('${iface.name}')">
-                        <td><span class="status-indicator ${iface.running ? 'running' : 'stopped'}"></span><span class="status-text">${iface.running ? '运行' : '停止'}</span></td>
+            wirelessInterfacesCache = interfaces;
+            lastWirelessInterfaces = interfaces;
+            renderWirelessInterfaces(interfaces, tbody);
+        }
+        
+        function renderWirelessInterfaces(interfaces, tbody) {
+            let tableHtml = '';
+            
+            interfaces.forEach(iface => {
+                const rowClass = iface.disabled ? 'interface-disabled' : '';
+                tableHtml += `
+                    <tr data-interface="${iface.name}" class="${rowClass}" onclick="selectWirelessInterface('${iface.name}', ${iface.disabled})" ondblclick="openWirelessConfigModal('${iface.name}')">
+                        <td><span class="status-indicator ${iface.disabled ? 'status-disabled' : (iface.running ? 'running' : 'stopped')}"></span><span class="status-text">${iface.disabled ? '禁用' : (iface.running ? '运行' : '停止')}</span></td>
                         <td class="col-name">${iface.name || '--'}</td>
                         <td class="col-mode">${getModeText(iface.mode)}</td>
                         <td class="col-ssid">${iface.ssid || '--'}</td>
@@ -3615,75 +3721,17 @@ const API_BASE = window.location.origin;
                         <td class="col-channel-width">${iface.channel_width || '--'}</td>
                         <td class="col-protocol">${iface.protocol || '--'}</td>
                     </tr>
-                `).join('');
-                return;
+                `;
+            });
+            
+            tbody.innerHTML = tableHtml;
+            
+            if (selectedWirelessInterface) {
+                const selectedRow = tbody.querySelector(`tr[data-interface="${selectedWirelessInterface.name}"]`);
+                if (selectedRow) {
+                    selectedRow.classList.add('selected-row');
+                }
             }
-            
-            tbody.querySelectorAll('tr:not([data-name])').forEach(row => row.remove());
-            
-            const lastMap = {};
-            lastInterfaces.forEach(iface => {
-                lastMap[iface.name] = iface;
-            });
-            
-            const currentNames = new Set(interfaces.map(i => i.name));
-            const existingRows = tbody.querySelectorAll('tr[data-name]');
-            const existingMap = {};
-            existingRows.forEach(row => {
-                existingMap[row.dataset.name] = row;
-            });
-            
-            interfaces.forEach(iface => {
-                const name = iface.name;
-                const lastIface = lastMap[name];
-                let row = existingMap[name];
-                
-                if (!row) {
-                    row = document.createElement('tr');
-                    row.dataset.name = name;
-                    row.onclick = function() { selectWirelessRow(this); };
-                    row.ondblclick = function() { openWirelessConfigModal(name); };
-                    row.innerHTML = `
-                        <td><span class="status-indicator ${iface.running ? 'running' : 'stopped'}"></span><span class="status-text">${iface.running ? '运行' : '停止'}</span></td>
-                        <td class="col-name">${iface.name || '--'}</td>
-                        <td class="col-mode">${getModeText(iface.mode)}</td>
-                        <td class="col-ssid">${iface.ssid || '--'}</td>
-                        <td class="col-frequency">${iface.frequency || '--'}</td>
-                        <td class="col-band">${iface.band || '--'}</td>
-                        <td class="col-channel-width">${iface.channel_width || '--'}</td>
-                        <td class="col-protocol">${iface.protocol || '--'}</td>
-                    `;
-                    tbody.appendChild(row);
-                } else if (!lastIface || 
-                    iface.running !== lastIface.running ||
-                    iface.mode !== lastIface.mode ||
-                    iface.ssid !== lastIface.ssid ||
-                    iface.frequency !== lastIface.frequency ||
-                    iface.band !== lastIface.band ||
-                    iface.channel_width !== lastIface.channel_width ||
-                    iface.protocol !== lastIface.protocol) {
-                    
-                    const statusIndicator = row.querySelector('.status-indicator');
-                    const statusText = row.querySelector('.status-text');
-                    if (statusIndicator && statusText) {
-                        statusIndicator.className = `status-indicator ${iface.running ? 'running' : 'stopped'}`;
-                        statusText.textContent = iface.running ? '运行' : '停止';
-                    }
-                    
-                    row.querySelector('.col-mode').textContent = getModeText(iface.mode);
-                    row.querySelector('.col-ssid').textContent = iface.ssid || '--';
-                    row.querySelector('.col-frequency').textContent = iface.frequency || '--';
-                    row.querySelector('.col-band').textContent = iface.band || '--';
-                    row.querySelector('.col-channel-width').textContent = iface.channel_width || '--';
-                    row.querySelector('.col-protocol').textContent = iface.protocol || '--';
-                }
-            });
-            
-            existingRows.forEach(row => {
-                if (!currentNames.has(row.dataset.name)) {
-                    row.remove();
-                }
-            });
         }
         
         let deviceInfoInterval = null;
@@ -3927,7 +3975,10 @@ const API_BASE = window.location.origin;
                             <div class="detail-item"><span class="detail-label">存储使用</span><span class="detail-value">${info.hdd_used || '--'} / ${info.hdd_total || '--'}</span></div>
                             <div class="detail-item"><span class="detail-label">架构</span><span class="detail-value">${info.architecture || '--'}</span></div>
                         `;
-                        document.getElementById('device-details').innerHTML = detailsHtml;
+                        const deviceDetailsEl = document.getElementById('device-details');
+                        if (deviceDetailsEl) {
+                            deviceDetailsEl.innerHTML = detailsHtml;
+                        }
                     }
                 }
             } catch (error) {
@@ -4130,27 +4181,42 @@ const API_BASE = window.location.origin;
         }
 
         let lastTrafficData = {};
+        let pendingTrafficData = {};
+        let trafficDisplayTimer = null;
 
         function formatBitrate(bps) {
             let kbps = bps / 1000;
             return kbps.toFixed(2) + ' Kbps';
         }
 
+        function startTrafficDisplayTimer() {
+            if (trafficDisplayTimer) return;
+            trafficDisplayTimer = setInterval(function() {
+                if (Object.keys(pendingTrafficData).length > 0) {
+                    for (const [ifaceName, traffic] of Object.entries(pendingTrafficData)) {
+                        const safeName = ifaceName.replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const txElement = document.getElementById(`tx-${safeName}`);
+                        const rxElement = document.getElementById(`rx-${safeName}`);
+                        
+                        if (txElement && traffic.tx_bps !== undefined) {
+                            txElement.textContent = formatBitrate(traffic.tx_bps);
+                        }
+                        if (rxElement && traffic.rx_bps !== undefined) {
+                            rxElement.textContent = formatBitrate(traffic.rx_bps);
+                        }
+                        
+                        lastTrafficData[ifaceName] = { tx_bps: traffic.tx_bps, rx_bps: traffic.rx_bps };
+                    }
+                    pendingTrafficData = {};
+                }
+            }, 500);
+        }
+
         function updateTrafficDisplay(trafficData) {
             for (const [ifaceName, traffic] of Object.entries(trafficData)) {
-                const safeName = ifaceName.replace(/[^a-zA-Z0-9_-]/g, '_');
-                const txElement = document.getElementById(`tx-${safeName}`);
-                const rxElement = document.getElementById(`rx-${safeName}`);
-                
-                if (txElement && traffic.tx_bps !== undefined) {
-                    txElement.textContent = formatBitrate(traffic.tx_bps);
-                }
-                if (rxElement && traffic.rx_bps !== undefined) {
-                    rxElement.textContent = formatBitrate(traffic.rx_bps);
-                }
-                
-                lastTrafficData[ifaceName] = { tx_bps: traffic.tx_bps, rx_bps: traffic.rx_bps };
+                pendingTrafficData[ifaceName] = { tx_bps: traffic.tx_bps, rx_bps: traffic.rx_bps };
             }
+            startTrafficDisplayTimer();
         }
 
         let selectedInterface = null;
@@ -4594,6 +4660,8 @@ const API_BASE = window.location.origin;
                     .then(result => {
                         if (result.status === 'success') {
                             refreshInterfaces();
+                            // 同时刷新无线接口列表（如果 WebSocket 处于活跃状态）
+                            refreshWirelessInterfacesIfActive();
                         } else {
                             showNetworkAlert('操作失败: ' + result.message, 'error');
                         }
@@ -4602,6 +4670,15 @@ const API_BASE = window.location.origin;
                         showNetworkAlert('操作失败: ' + error.message, 'error');
                     });
             });
+        }
+
+        function refreshWirelessInterfacesIfActive() {
+            if (wirelessInterfacesWs) {
+                disconnectWirelessInterfacesWebSocket();
+                setTimeout(function() {
+                    connectWirelessInterfacesWebSocket();
+                }, 100);
+            }
         }
 
         async function refreshInterfaces() {
@@ -4619,7 +4696,9 @@ const API_BASE = window.location.origin;
         let reconnectInterval = null;
         let lastWsMessageTime = 0;
         let wsHeartbeatTimer = null;
-        const WS_HEARTBEAT_TIMEOUT = 45000; // 45秒没收到消息视为断线（后端每5秒发心跳，3次失败=15秒+余量）
+        const WS_HEARTBEAT_TIMEOUT = 45000;
+        let offlineDebounceTimer = null;
+        const OFFLINE_DEBOUNCE_DELAY = 3000;
 
         function showReconnectModal() {
             const modal = document.getElementById('reconnect-modal');
@@ -4894,6 +4973,11 @@ const API_BASE = window.location.origin;
                 
                 if (data.status === 'connected') {
                     console.log('设备已连接');
+                    if (offlineDebounceTimer) {
+                        console.log('连接已恢复，清除离线防抖定时器');
+                        clearTimeout(offlineDebounceTimer);
+                        offlineDebounceTimer = null;
+                    }
                     if (reconnectTimer) {
                         reconnectSuccess();
                     }
@@ -4902,10 +4986,18 @@ const API_BASE = window.location.origin;
                 
                 if (data.status === 'device_offline') {
                     console.log('收到设备离线通知');
-                    if (!isLoggingOut && !reconnectTimer) {
-                        showReconnectModal();
-                        reconnectWebSocket();
+                    if (offlineDebounceTimer) {
+                        console.log('离线防抖中，忽略重复通知');
+                        return;
                     }
+                    offlineDebounceTimer = setTimeout(() => {
+                        offlineDebounceTimer = null;
+                        if (!isLoggingOut && !reconnectTimer) {
+                            console.log('离线防抖确认，触发重连');
+                            showReconnectModal();
+                            reconnectWebSocket();
+                        }
+                    }, OFFLINE_DEBOUNCE_DELAY);
                     return;
                 }
 

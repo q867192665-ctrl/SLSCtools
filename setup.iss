@@ -44,6 +44,10 @@ Source: "dist\setup_files\logo.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\setup_files\Logo.jpg"; DestDir: "{app}"; Flags: ignoreversion
 ; 前端静态文件
 Source: "dist\setup_files\static\*"; DestDir: "{app}\static"; Flags: ignoreversion recursesubdirs createallsubdirs
+; WinBox 工具（如果存在）
+; Source: "dist\setup_files\SLSCtools.exe"; DestDir: "{app}"; Flags: ignoreversion
+; 解锁工具（如果存在）
+; Source: "dist\setup_files\unlock.py"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\logo.ico"; WorkingDir: "{app}"

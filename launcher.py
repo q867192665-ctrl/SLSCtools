@@ -15,6 +15,7 @@ import socket
 import subprocess
 import webbrowser
 import logging
+import codecs
 
 # 配置
 HTTP_PORT = 32995
@@ -43,8 +44,11 @@ def get_log_dir():
 # PyInstaller 打包后日志写入文件，开发模式输出到控制台
 if getattr(sys, 'frozen', False):
     _log_file = os.path.join(get_log_dir(), 'launcher.log')
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s',
-                        filename=_log_file, filemode='a', encoding='utf-8')
+    # Python 3.8 兼容：使用 codecs.open() + StreamHandler 代替 encoding 参数
+    _log_stream = codecs.open(_log_file, mode='a', encoding='utf-8')
+    _handler = logging.StreamHandler(_log_stream)
+    _handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    logging.basicConfig(level=logging.INFO, handlers=[_handler])
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('ChinanTool Launcher')

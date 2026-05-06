@@ -140,7 +140,7 @@ def get_log_api_connection(ip, username, password):
             log_api_pool[ip] = mt_api
         return mt_api
     else:
-        print(f"日志API连接失败: {ip} - {message}")
+        print(f"日志连接失败: {ip} - {message}")
         return None
 
 
@@ -153,7 +153,7 @@ def close_log_api_connection(ip):
             except:
                 pass
             del log_api_pool[ip]
-            print(f"已关闭日志API连接: {ip}")
+            print(f"已关闭日志连接: {ip}")
     with log_api_locks_lock:
         if ip in log_api_locks:
             del log_api_locks[ip]
@@ -490,6 +490,12 @@ class APIHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             self.handle_security_profile_edit(post_data)
+        elif parsed_path.path == '/api/slsc-tools':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            self.handle_slsc_tools(post_data)
+        elif parsed_path.path == '/api/slsc-tools/close':
+            self.handle_slsc_tools_close()
         else:
             self.send_error(404, "Not Found")
 
@@ -1068,7 +1074,7 @@ class APIHandler(BaseHTTPRequestHandler):
                         if ip in ros_pool:
                             ros_pool[ip].disconnect()
                             del ros_pool[ip]
-                            print(f"已关闭 librouteros 连接: {ip}")
+                            print(f"已关闭连接: {ip}")
 
                     try:
                         from websocket_server import device_api_connections, api_conn_lock as ws_api_conn_lock
@@ -1080,9 +1086,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                 except:
                                     pass
                                 del device_api_connections[ip]
-                                print(f"已关闭 WebSocket 侧 API 连接: {ip}")
+                                print(f"已关闭 WebSocket 侧连接: {ip}")
                     except Exception as ws_cleanup_err:
-                        print(f"清理 WebSocket API 连接时出错: {ws_cleanup_err}")
+                        print(f"清理 WebSocket 连接时出错: {ws_cleanup_err}")
 
                     try:
                         from websocket_server import interface_api_connections, interface_api_lock as ws_iface_lock
@@ -1094,9 +1100,9 @@ class APIHandler(BaseHTTPRequestHandler):
                                 except:
                                     pass
                                 del interface_api_connections[ip]
-                                print(f"已关闭 WebSocket 侧接口 API 连接: {ip}")
+                                print(f"已关闭 WebSocket 侧接口连接: {ip}")
                     except Exception as ws_cleanup_err:
-                        print(f"清理 WebSocket 接口 API 连接时出错: {ws_cleanup_err}")
+                        print(f"清理 WebSocket 接口连接时出错: {ws_cleanup_err}")
 
             close_log_api_connection(ip)
             clear_log_cache(ip)
@@ -1346,7 +1352,7 @@ class APIHandler(BaseHTTPRequestHandler):
                             'board_name': board_name,
                             'identity': identity
                         }
-                        print(f"登录成功: {ip} (RouterOS {routeros_version}, API: {mt_api.api_version}, Identity: {identity})")
+                        print(f"登录成功: {ip} (版本 {routeros_version}, Identity: {identity})")
                     else:
                         result = {
                             'status': 'error',
@@ -1657,10 +1663,73 @@ class APIHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_error(400, str(e))
 
+    def handle_slsc_tools(self, post_data):
+        """启动 WinBox (SLSCtools.exe) 并传递 MAC 地址到 Connect To 栏"""
+        import ctypes
+        
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            mac = data.get('mac', '')
+            
+            print(f"收到启动 SLSCtools 请求: mac={mac}")
+            
+            if not mac:
+                result = {'status': 'error', 'message': '请提供 MAC 地址'}
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                slsc_path = os.path.join(base_dir, 'SLSCtools.exe')
+                
+                print(f"程序路径: {slsc_path}, 存在: {os.path.exists(slsc_path)}")
+                
+                if not os.path.exists(slsc_path):
+                    result = {'status': 'error', 'message': f'程序不存在: {slsc_path}'}
+                else:
+                    ret = ctypes.windll.shell32.ShellExecuteW(
+                        None, "open", slsc_path, mac, os.path.dirname(slsc_path), 1
+                    )
+                    
+                    if ret <= 32:
+                        print(f"ShellExecuteW 返回错误码: {ret}")
+                        result = {'status': 'error', 'message': f'启动失败，错误码: {ret}'}
+                    else:
+                        print(f"已启动 WinBox，MAC 地址已传递到 Connect To 栏: {mac}")
+                        result = {'status': 'success', 'message': '已启动', 'mac': mac}
+        except Exception as e:
+            print(f"启动 SLSCtools 失败: {e}")
+            result = {'status': 'error', 'message': f'启动失败: {e}'}
+        
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+
+    def handle_slsc_tools_close(self):
+        """关闭 SLSCtools.exe 进程"""
+        import subprocess
+        
+        result = {'status': 'success', 'message': 'SLSCtools 已关闭'}
+        
+        try:
+            subprocess.run(['taskkill', '/F', '/IM', 'SLSCtools.exe'], 
+                          capture_output=True, timeout=5)
+            print("已关闭 SLSCtools.exe")
+        except subprocess.TimeoutExpired:
+            result = {'status': 'error', 'message': '关闭超时'}
+        except Exception as e:
+            print(f"关闭 SLSCtools.exe 时出错: {e}")
+            result = {'status': 'error', 'message': f'关闭失败: {e}'}
+        
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
+
 def run_api_server(port=32995, mndp_core=None):
     APIHandler.mndp_core = mndp_core
     server = ThreadingHTTPServer(('0.0.0.0', port), APIHandler)
-    print(f"API Server started on http://0.0.0.0:{port}")
+    print(f"服务已启动 http://0.0.0.0:{port}")
     print(f"前端网页地址: http://localhost:{port}")
     server.serve_forever()
 
